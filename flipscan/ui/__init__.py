@@ -18,6 +18,7 @@ from ..jobs import CANCELED, DONE, ERROR, JobQueue
 from ..jobs_handlers import concurrency_config, register_handlers
 from ..project import create_project, retry_ocr_page
 from ..workspace import STAGES, Workspace
+from .security import install_token_auth, is_plain_name, load_or_create_token, within
 
 _TERMINAL = {DONE, ERROR, CANCELED}
 
@@ -152,10 +153,11 @@ def _iou(a: list[float], b: list[float]) -> float:
     return inter / ua if ua > 0 else 0.0
 
 
-def create_app(root: Path) -> FastAPI:
+def create_app(root: Path, token: str | None = None) -> FastAPI:
     root = Path(root).resolve()
     root.mkdir(parents=True, exist_ok=True)   # projects folder made on demand
     app = FastAPI(title="FlipScan")
+    install_token_auth(app, token or load_or_create_token(root))
 
     # local usage log: one JSONL line per request (no page content) so we can
     # analyze how the UI is actually navigated. Size-capped with a single
@@ -199,8 +201,9 @@ def create_app(root: Path) -> FastAPI:
     _EXCLUSIVE_KINDS = ("pipeline", "pdf-import", "video-import", "epub-import")
 
     def ws_for(name: str) -> Workspace:
-        target = (root / name).resolve()
-        if not str(target).startswith(str(root)) or not (target / "manifest.json").exists():
+        target = root / name
+        if (not is_plain_name(name) or not within(root, target)
+                or not (target / "manifest.json").exists()):
             raise HTTPException(404, f"no project {name!r}")
         return Workspace.open(target)
 
@@ -297,12 +300,18 @@ def create_app(root: Path) -> FastAPI:
     @app.post("/api/projects")
     def new_project(spec: NewProject):
         name = spec.name or _unique_slug(root, spec.title)
+        if not is_plain_name(name):
+            raise HTTPException(400, "project name must be a single folder name")
         target = root / name
         if (target / "manifest.json").exists():
             raise HTTPException(409, "project already exists")
         for v in spec.videos:
-            if not Path(v.path).exists():
-                raise HTTPException(400, f"video not found: {v.path}")
+            # only files the browser uploaded — never arbitrary server paths,
+            # which would copy e.g. ~/.ssh keys into a servable project folder
+            if not within(root / "uploads", Path(v.path)):
+                raise HTTPException(400, "videos must be uploaded first (/api/upload)")
+            if not Path(v.path).is_file():
+                raise HTTPException(400, f"video not found: {Path(v.path).name}")
         book_meta = {"author": spec.author, "isbn": spec.isbn,
                      "publisher": spec.publisher, "year": spec.year}
         create_project(target, [v.model_dump() for v in spec.videos],
@@ -558,6 +567,13 @@ def create_app(root: Path) -> FastAPI:
     def put_settings(s: Settings):
         cfg_now = load_config()
         current = cfg_now["provider"]
+        # a stored key must never follow a new endpoint unseen — otherwise
+        # anyone who can reach the GUI could redirect it to their own server
+        old_url = current.get("openai_base_url", "https://api.openai.com/v1")
+        if (s.openai_base_url and s.openai_base_url.rstrip("/") != old_url.rstrip("/")
+                and current.get("openai_api_key") and not s.openai_api_key):
+            raise HTTPException(400, "re-enter the API key when changing the "
+                                     "OpenAI-compatible base URL")
         save_global_config({
             # save_global_config rewrites the whole file — carry the audiobook
             # section (default narrator voice etc.) through, or it's wiped
@@ -581,13 +597,20 @@ def create_app(root: Path) -> FastAPI:
     @app.get("/api/settings/ollama-models")
     def ollama_models(url: str):
         import httpx
+        from urllib.parse import urlsplit
+        if urlsplit(url).scheme not in ("http", "https"):
+            raise HTTPException(400, "Ollama URL must start with http:// or https://")
         try:
-            r = httpx.get(f"{url.rstrip('/')}/api/tags", timeout=6.0)
+            r = httpx.get(f"{url.rstrip('/')}/api/tags", timeout=6.0,
+                          follow_redirects=False)
             r.raise_for_status()
             return {"ok": True,
                     "models": [m["name"] for m in r.json().get("models", [])]}
+        except httpx.HTTPStatusError as e:
+            return {"ok": False, "error": f"server answered HTTP {e.response.status_code}"}
         except Exception as e:
-            return {"ok": False, "error": str(e)}
+            # only the error type: the body/details of an arbitrary URL stay server-side
+            return {"ok": False, "error": f"couldn't reach Ollama ({type(e).__name__})"}
 
     # ---------------- uploads (videos/photos from the browser, incl. phones)
 
@@ -2258,9 +2281,8 @@ def create_app(root: Path) -> FastAPI:
 
     @app.get("/api/voice-previews/{fname}")
     def voice_preview_file(fname: str):
-        f = (root / "voices" / "previews" / fname).resolve()
-        base = (root / "voices" / "previews").resolve()
-        if not str(f).startswith(str(base)) or not f.exists():
+        f = root / "voices" / "previews" / fname
+        if not within(root / "voices" / "previews", f) or not f.is_file():
             raise HTTPException(404, "no such preview")
         return FileResponse(f, media_type="audio/wav")
 
@@ -2380,8 +2402,8 @@ def create_app(root: Path) -> FastAPI:
 
     @app.delete("/api/voices/{voice_name}")
     def delete_voice(voice_name: str):
-        f = (root / "voices" / f"{voice_name}.wav").resolve()
-        if not str(f).startswith(str((root / "voices").resolve())):
+        f = root / "voices" / f"{voice_name}.wav"
+        if f.parent.resolve() != (root / "voices").resolve() or not within(root / "voices", f):
             raise HTTPException(400, "bad voice name")
         f.unlink(missing_ok=True)
         return {"ok": True, "voices": _voice_names()}
@@ -2445,9 +2467,10 @@ def create_app(root: Path) -> FastAPI:
 
         ws = ws_for(name)
         src = (ws.root / path).resolve()
-        if not str(src).startswith(str(ws.root.resolve())) or not src.is_file():
+        if not within(ws.root, src) or not src.is_file():
             raise HTTPException(404, "not found")
-        if path.split("/")[0] not in SERVABLE:
+        # judge the RESOLVED path: "videos/../config.toml" must not pass as "videos"
+        if src.relative_to(ws.root.resolve()).parts[0] not in SERVABLE:
             raise HTTPException(403, "not servable")
         w = max(64, min(2000, w))
         st = src.stat()
@@ -2475,9 +2498,9 @@ def create_app(root: Path) -> FastAPI:
     def get_file(name: str, path: str):
         ws = ws_for(name)
         target = (ws.root / path).resolve()
-        if not str(target).startswith(str(ws.root.resolve())) or not target.is_file():
+        if not within(ws.root, target) or not target.is_file():
             raise HTTPException(404, "not found")
-        top = path.split("/")[0]
+        top = target.relative_to(ws.root.resolve()).parts[0]
         if top not in SERVABLE:
             raise HTTPException(403, "not servable")
         # extracted frames are immutable; everything else (corrected pages,
@@ -2508,7 +2531,7 @@ def create_app(root: Path) -> FastAPI:
     @app.get("/static/{path:path}")
     def static_file(path: str):
         target = (static_dir / path).resolve()
-        if not str(target).startswith(str(static_dir.resolve())) or not target.is_file():
+        if not within(static_dir, target) or not target.is_file():
             raise HTTPException(404, "not found")
         cache = ("max-age=86400" if path.startswith("vendor/")  # libs are pinned
                  else "no-cache")

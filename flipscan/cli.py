@@ -275,18 +275,23 @@ def ui(root, host, port):
             "GUI dependencies missing — install with: pip install 'flipscan[ui]'")
     root = root or Path(os.environ.get("FLIPSCAN_ROOT", "."))
     root.mkdir(parents=True, exist_ok=True)   # ensure the projects folder exists
+    from .ui.security import load_or_create_token
+    tok = f"?token={load_or_create_token(root)}"
     click.echo(f"FlipScan GUI  (projects root: {root.resolve()})")
-    click.echo(f"  this machine:  http://127.0.0.1:{port}")
+    # token included: inside Docker even the host's own browser isn't loopback
+    click.echo(f"  this machine:  http://localhost:{port}/{tok}")
     if host == "0.0.0.0":
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             lan_ip = s.getsockname()[0]
             s.close()
-            click.echo(f"  your network:  http://{lan_ip}:{port}  (phone, tablet, ...)")
-            click.echo(f"  phone mic:     https://{lan_ip}:{port + 1}  "
+            click.echo(f"  your network:  http://{lan_ip}:{port}/{tok}  (phone, tablet, ...)")
+            click.echo(f"  phone mic:     https://{lan_ip}:{port + 1}/{tok}  "
                        f"(voice recording needs https — accept the "
                        f"certificate warning once)")
+            click.echo("  the token link is the password for other devices — "
+                       "don't share it beyond people you trust")
         except OSError:
             pass
     serve(root, host=host, port=port)

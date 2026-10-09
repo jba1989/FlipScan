@@ -83,7 +83,8 @@ Outputs are marked **stale** the moment any page, figure, or proof changes — a
 
 ```sh
 docker compose up --build
-# drop videos/PDFs into ./books, open http://localhost:8321
+# drop videos/PDFs into ./books, then open the http://localhost:8321/?token=… link
+# from `docker compose logs flipscan` (or read ./books/.ui_token)
 ```
 
 Compose brings up **two services** sharing the `./books` volume: the **web** GUI and a dedicated **worker** that runs the durable job queue (pipeline, proofreads, re-reads). Because the worker is its own container, restarting or redeploying the web server never interrupts a running job. `./books` is mounted as `/data`: sources go in, outputs come out, every workspace persists on the host — including `jobs.db`, the shared queue. Set `FLIPSCAN_OLLAMA_URL` (your Ollama server's LAN IP works from the container) and `FLIPSCAN_PROVIDER` via environment or a `.env` next to `docker-compose.yml`.
@@ -136,6 +137,8 @@ The server also listens on **https at port+1** (default `https://<your-ip>:8322`
 If another device can't reach it on Windows, allow the ports once (admin PowerShell):
 `netsh advfirewall firewall add rule name="FlipScan GUI" dir=in action=allow protocol=TCP localport=8321-8322 profile=private`
 Use `--host 127.0.0.1` to keep the GUI private to this machine.
+
+**Access token.** Because the GUI is reachable from your whole network, every device other than this machine's own browser (at `localhost`) must present an access token. `flipscan ui` prints links with `?token=…`; opening one once stores the token in an HttpOnly cookie, so bookmarks keep working. The token is generated on first start into `<projects root>/.ui_token` (owner-only; delete it to rotate) or set via `FLIPSCAN_TOKEN`. Treat the link like a password: anyone holding it can use the GUI, including your saved API keys. Changing the OpenAI-compatible base URL requires re-entering its key, so a stored key never follows a new endpoint.
 
 ## Backends
 

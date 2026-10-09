@@ -63,7 +63,7 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
 
     def ws_for(name: str) -> Workspace:
         target = (root / name).resolve()
-        if not str(target).startswith(str(root)) or not (target / "manifest.json").exists():
+        if not target.is_relative_to(root) or not (target / "manifest.json").exists():
             raise FileNotFoundError(f"no project {name!r}")
         return Workspace.open(target)
 

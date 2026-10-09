@@ -26,6 +26,9 @@ access.jsonl.1
 # Self-signed TLS material for LAN https (never commit keys)
 .tls/
 
+# GUI access token (the password for LAN devices)
+.ui_token
+
 # Python
 __pycache__/
 *.py[cod]
