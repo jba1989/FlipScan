@@ -535,3 +535,19 @@ def test_isbn_validation():
     assert _valid_isbn13("9781560982197")
     assert not _valid_isbn13("9781560982190")     # bad checksum
     assert not _valid_isbn13("1234567890123")     # wrong prefix
+
+
+# ---------------- preprocess: LLM image sizing
+
+def test_llm_copy_upscales_small_page_crops():
+    # a single page cut from a 1080p frame is ~660x890 — vision models misread
+    # ~20px CJK glyphs, so small crops are enlarged to the LLM budget
+    from flipscan.stages.preprocess import llm_copy
+    out = llm_copy(np.full((887, 663, 3), 200, np.uint8), 1600)
+    assert out.shape == (1600, round(663 * 1600 / 887))
+
+
+def test_llm_copy_still_downscales_large_frames():
+    from flipscan.stages.preprocess import llm_copy
+    out = llm_copy(np.full((2160, 3840, 3), 200, np.uint8), 1600)
+    assert out.shape == (900, 1600)

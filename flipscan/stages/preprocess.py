@@ -97,13 +97,18 @@ def dewarp_cylindrical(color: np.ndarray) -> np.ndarray:
 
 
 def llm_copy(color: np.ndarray, long_edge: int) -> np.ndarray:
-    """Grayscale, CLAHE contrast normalization, downscale to the LLM budget."""
+    """Grayscale, CLAHE contrast normalization, resize to the LLM budget.
+
+    Small crops are enlarged too: one page cut from a 1080p frame is ~660 px
+    wide, and a Lanczos upscale to 1600 cut gemma4's CJK misreads from 11 to
+    6 and 94 to 88 on two test pages (A/B on a real flip video, same prompt)."""
     gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
     gray = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8)).apply(gray)
     h, w = gray.shape
     scale = long_edge / max(h, w)
-    if scale < 1.0:
-        gray = cv2.resize(gray, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    if scale != 1.0:
+        interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_LANCZOS4
+        gray = cv2.resize(gray, (round(w * scale), round(h * scale)), interpolation=interp)
     return gray
 
 
