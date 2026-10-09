@@ -14,6 +14,8 @@ same-page and different-page distances overlap):
 - A capture that shows an open two-page spread yields ONE page: the vision
   model is instructed to transcribe only the flat, readable side (the curled
   side gets its own flat capture in another pass and dedupes by number).
+  With [preprocess] split_spreads on, select later splits captures of a flat
+  spread into a left and a right page instead.
 """
 
 from __future__ import annotations

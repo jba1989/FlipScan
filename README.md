@@ -212,6 +212,7 @@ isolate_page = true              # edge-detection page crop (falls back to quad)
 llm_long_edge = 1600             # LLM copy downscale
 quad_pad = 0.025                 # crop padding so page numbers survive
 dewarp = false                   # cylindrical curl correction
+split_spreads = false            # split a flat open two-page spread at the fold
 
 [transcribe]
 max_retries = 1
@@ -244,6 +245,7 @@ flipscan worker [--root DIR]                       run the job worker as its own
 - **Missing / duplicated printed numbers** — the most reliable gap signal. The Pages tab shows inline missing-page markers; capture those pages (wizard, another video, or a photo). Duplicate captures collapse automatically by printed number, and genuinely-identical figures are detected by perceptual hash.
 - **Blurry / low-confidence pages** — they're on the reshoot list; use the capture wizard or Patch. Photos taken deliberately are used untouched.
 - **Upside-down pages** — auto-detected per video and per photo; override with the media-tab video toggle or the page's ↻ 180° button.
+- **Book filmed lying open, both pages flat** — by default a spread yields ONE page (the model reads the flat side, which suits mid-turn flip videos). Set `[preprocess] split_spreads = true` in the book's `config.toml` to cut each flat spread at the fold into two perspective-corrected pages (`<id>` and `<id>r`); frames caught mid-turn stay single. On an existing book run, in order, `flipscan run <book> --stage` `select`, `preprocess`, `transcribe`, `figures`, `assemble` — newly split pages are re-read, unchanged ones keep their text.
 - **Curled text bows near the spine** — set `[preprocess] dewarp = true` and re-run `--stage preprocess` (then transcribe onward with `--force`).
 - **ffmpeg not found** — install it (`winget install Gyan.FFmpeg` / `apt install ffmpeg`) or set `FLIPSCAN_FFMPEG`.
 - **Ollama unreachable from Docker** — use the Ollama box's LAN IP in `FLIPSCAN_OLLAMA_URL`.

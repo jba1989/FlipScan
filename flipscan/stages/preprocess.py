@@ -15,7 +15,7 @@ import cv2
 import numpy as np
 
 from ..imaging import (detect_page_quad, find_flat_page, isolate_book,
-                       mask_outside, order_quad)
+                       mask_outside, order_quad, tighten_to_text)
 from ..workspace import Workspace
 from .score import scores_by_frame_id
 from .select import frame_path
@@ -112,6 +112,17 @@ def llm_copy(color: np.ndarray, long_edge: int) -> np.ndarray:
     return gray
 
 
+def _write_page_images(ws: Workspace, page: dict, color: np.ndarray, cfg: dict) -> None:
+    out_dir = ws.work_file("pages")
+    out_dir.mkdir(exist_ok=True)
+    cv2.imwrite(str(out_dir / f"{page['id']}_color.png"), color)
+    cv2.imwrite(str(out_dir / f"{page['id']}_llm.jpg"),
+                llm_copy(color, cfg["preprocess"]["llm_long_edge"]),
+                [cv2.IMWRITE_JPEG_QUALITY, 85])
+    page["color"] = f"work/pages/{page['id']}_color.png"
+    page["llm_image"] = f"work/pages/{page['id']}_llm.jpg"
+
+
 def preprocess_page(ws: Workspace, page: dict, cfg: dict,
                     scores: dict[str, dict] | None = None) -> None:
     """Correct one page's canonical frame; used by the stage and the patch flow."""
@@ -147,6 +158,17 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
     rotation = _video_rotation(ws, fid)
     if rotation == 180:
         bgr = cv2.rotate(bgr, cv2.ROTATE_180)
+
+    # one half of a split two-page spread (select decided): warp exactly that
+    # page's quad, then trim stacked pages / desk wedges to its text block
+    if page.get("spread_quad"):
+        quad = _pad_quad(np.array(page["spread_quad"], dtype=np.float64), pad)
+        color = tighten_to_text(correct_page(bgr, quad))
+        if cfg["preprocess"].get("dewarp"):
+            color = dewarp_cylindrical(color)
+        _write_page_images(ws, page, color, cfg)
+        page.pop("isolated", None)
+        return
 
     # edge-density page isolation: crop straight to the flat readable page
     # (lighting-invariant; falls back to the quad path when not confident)

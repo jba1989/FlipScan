@@ -58,6 +58,8 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
             "motion": best["motion"],
         }
 
+    split_spreads(ws, cfg, log)
+
     # restore cached transcriptions for pages whose best capture is unchanged
     # (re-clustering renumbers pages; the cache is keyed by capture identity)
     from .transcribe import cache_key, load_cache
@@ -101,6 +103,66 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
     log(f"  canonical frames chosen for {len(ws.manifest['pages'])} pages")
     log(f"  contact sheet: {sheet}")
     ws.stage_done("select")
+
+
+# transcription state that belongs to one specific crop of a capture
+_CROP_FIELDS = ("md", "printed_number", "number_manual", "confidence", "regions",
+                "flags", "transcribed_by", "transcribe_error", "figures",
+                "color", "llm_image", "isolated", "chapter")
+
+
+def split_spreads(ws: Workspace, cfg: dict, log=print) -> int:
+    """With [preprocess] split_spreads on, a capture showing a flat open spread
+    becomes TWO pages: the original (side=left) and a sibling `<id>r`
+    (side=right), each carrying its own perspective quad for preprocess.
+    Idempotent: earlier siblings are dropped and every capture re-decided, so
+    re-runs and toggling the flag never double pages. Crops whose split state
+    changed lose their transcription (it was read from a different crop);
+    unchanged ones keep it. Returns the number of captures split."""
+    from ..imaging import split_spread
+
+    old_side = {p["id"]: p.get("side") for p in ws.manifest["pages"]}
+    pages = [p for p in ws.manifest["pages"] if p.get("side") != "right"]
+    for p in pages:
+        for k in ("side", "spread_quad", "spread_order"):
+            p.pop(k, None)
+
+    videos = {v["id"]: v for v in ws.manifest["videos"]}
+    enabled = cfg["preprocess"].get("split_spreads", False)
+    out, n = [], 0
+    for p in pages:
+        out.append(p)
+        fid = p.get("canonical")
+        halves = None
+        if (enabled and fid and not p.get("patched_source") and not p.get("role")
+                and p.get("status") != "deleted"):
+            bgr = cv2.imread(str(frame_path(ws, fid)))
+            video = videos.get(fid.split("_", 1)[0], {})
+            if bgr is not None:
+                if video.get("rotate") == 180:
+                    bgr = cv2.rotate(bgr, cv2.ROTATE_180)
+                halves = split_spread(bgr)
+        if halves is None:
+            if old_side.get(p["id"]) == "left":       # was split, now isn't
+                for k in _CROP_FIELDS:
+                    p.pop(k, None)
+            continue
+        if old_side.get(p["id"]) != "left":           # newly split
+            for k in _CROP_FIELDS:
+                p.pop(k, None)
+        # capture order must stay monotonic in printed numbers: left precedes
+        # right when flipping forward, follows it when filming in reverse
+        reverse = video.get("direction") == "reverse"
+        p.update(side="left", spread_quad=halves["left"], spread_order=int(reverse))
+        sibling = {k: v for k, v in p.items() if k not in _CROP_FIELDS}
+        sibling.update(id=f"{p['id']}r", side="right", spread_quad=halves["right"],
+                       spread_order=int(not reverse), printed_number=None)
+        out.append(sibling)
+        n += 1
+    ws.manifest["pages"] = out
+    if n:
+        log(f"  {n} two-page spreads split into left/right pages")
+    return n
 
 
 def contact_sheet(ws: Workspace, thumb_w: int = 240, cols: int = 8):

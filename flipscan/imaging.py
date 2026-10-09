@@ -222,6 +222,116 @@ def find_flat_page(bgr: np.ndarray) -> tuple[int, int, int, int] | None:
     return box if ok else None
 
 
+def _text_density(gray: np.ndarray) -> np.ndarray:
+    """0..1 map of printed-text strokes (dilated Canny, lighting-invariant)."""
+    med = float(np.median(gray))
+    edges = cv2.Canny(gray, 0.66 * med, 1.33 * med)
+    txt = cv2.dilate(edges, cv2.getStructuringElement(cv2.MORPH_RECT, (9, 5)))
+    return txt.astype(np.float32) / 255.0
+
+
+def _edge_cross(p: np.ndarray, q: np.ndarray, a: float, b: float) -> np.ndarray:
+    """Where the line x = a*y + b crosses the book edge p->q."""
+    d = q - p
+    denom = d[0] - a * d[1]
+    t = 0.5 if abs(denom) < 1e-9 else (a * p[1] + b - p[0]) / denom
+    return p + float(np.clip(t, 0.0, 1.0)) * d
+
+
+def split_spread(bgr: np.ndarray, bands: int = 8) -> dict | None:
+    """Detect an open two-page spread lying flat and split it at the fold.
+
+    Per horizontal band, the fold is the column in the book's middle with the
+    least text and the most shadow; a line x = a*y + b is fit through the band
+    minima, so a camera that isn't square to the book still gets a straight,
+    tilted fold. Returns {"left", "right"}: normalized tl,tr,br,bl quads for
+    each page (sharing the fold edge) — or None unless it is confidently a
+    flat spread: a wide book, a near-vertical fold the bands agree on, and
+    text on BOTH sides. Mid-turn frames (a page in the air, a hand) fail
+    those checks and keep the single-page path.
+    """
+    h, w = bgr.shape[:2]
+    _mask, quad, _spine = isolate_book(bgr)
+    if quad is None:
+        return None
+    tl, tr, br, bl = quad * [w, h]
+    x0, x1 = max(0, int(min(tl[0], bl[0]))), min(w, int(max(tr[0], br[0])))
+    y0, y1 = max(0, int(min(tl[1], tr[1]))), min(h, int(max(bl[1], br[1])))
+    if (x1 - x0) < 1.1 * (y1 - y0) or (y1 - y0) < 8 * bands:               # two portrait pages side by side
+        return None
+
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    txt = _text_density(gray)
+    lo, hi = x0 + int(0.3 * (x1 - x0)), x0 + int(0.7 * (x1 - x0))
+    k = max(15, (hi - lo) // 25) | 1
+    kernel = np.ones(k) / k
+    xs, ys = [], []
+    for i in range(bands):
+        ya = y0 + (y1 - y0) * i // bands
+        yb = y0 + (y1 - y0) * (i + 1) // bands
+        dens = np.convolve(txt[ya:yb, lo:hi].mean(axis=0), kernel, "same")
+        dark = np.convolve(1 - gray[ya:yb, lo:hi].mean(axis=0) / 255.0, kernel, "same")
+        xs.append(lo + int(np.argmin(dens - 0.5 * dark)))
+        ys.append((ya + yb) / 2)
+    xs_a, ys_a = np.array(xs, float), np.array(ys, float)
+    a, b = np.polyfit(ys_a, xs_a, 1)
+    resid = np.abs(xs_a - (a * ys_a + b))
+    keep = resid <= max(float(np.percentile(resid, 75)), 4.0)   # drop header/figure bands
+    a, b = np.polyfit(ys_a[keep], xs_a[keep], 1)
+    inliers = np.abs(xs_a - (a * ys_a + b)) < 0.03 * (x1 - x0)
+    if abs(a) > 0.15 or inliers.sum() < 0.6 * bands:   # slanted/scattered: mid-turn
+        return None
+
+    gx = int(a * (y0 + y1) / 2 + b)
+    left_d = float(txt[y0:y1, x0:gx].mean()) if gx > x0 else 0.0
+    right_d = float(txt[y0:y1, gx:x1].mean()) if x1 > gx else 0.0
+    if min(left_d, right_d) < 0.03 or min(left_d, right_d) < 0.25 * max(left_d, right_d):
+        return None                                # one side blank or blurred
+
+    gt, gb = _edge_cross(tl, tr, a, b), _edge_cross(bl, br, a, b)
+    norm = np.array([w, h], float)
+    return {"left": (np.array([tl, gt, gb, bl]) / norm).tolist(),
+            "right": (np.array([gt, tr, br, gb]) / norm).tolist()}
+
+
+def _text_runs(profile: np.ndarray, thr: float, bridge: int) -> list[tuple[int, int]]:
+    """Runs of profile > thr (inclusive bounds), bridging gaps shorter than `bridge`."""
+    idx = np.flatnonzero(profile > thr)
+    if len(idx) == 0:
+        return []
+    runs, start, prev = [], idx[0], idx[0]
+    for i in idx[1:]:
+        if i - prev > bridge:
+            runs.append((int(start), int(prev)))
+            start = i
+        prev = i
+    runs.append((int(start), int(prev)))
+    return runs
+
+
+def tighten_to_text(page: np.ndarray) -> np.ndarray:
+    """Cut slivers of OTHER pages (stacked beneath this one) off the sides of
+    a corrected page. The cut sits right past the foreign text, never at this
+    page's own text: printed page numbers live in the blank outer margin
+    between the two, which is exactly the side the stacked pages show up on.
+    Full height is kept; unchanged when there is no clear main text block."""
+    gray = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    cols = np.convolve(_text_density(gray).mean(axis=0), np.ones(9) / 9, "same")
+    runs = _text_runs(cols, 0.04, int(0.04 * w))
+    if not runs:
+        return page
+    main = max(runs, key=lambda r: float(cols[r[0]:r[1] + 1].sum()))
+    if main[1] - main[0] < 0.3 * w:
+        return page
+    pad = int(0.01 * w)
+    left = max((r[1] for r in runs if r[1] < main[0]), default=-1)
+    right = min((r[0] for r in runs if r[0] > main[1]), default=w)
+    x0 = 0 if left < 0 else min(left + pad, main[0])
+    x1 = w if right >= w else max(right - pad, main[1] + 1)
+    return page[:, x0:x1]
+
+
 def detect_figures(gray: np.ndarray) -> list[list[float]]:
     """Find printed photos on a page with no prior at all (the LLM's reported
     figure boxes measured near-random on real footage: median IoU 0.002).

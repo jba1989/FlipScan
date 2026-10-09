@@ -229,12 +229,15 @@ def _body_pages(pages: list[dict]) -> list[dict]:
             and p.get("status") not in ("duplicate", "deleted")]
 
 
-def _frame_no(page: dict) -> int | None:
+def _frame_no(page: dict) -> float | None:
+    """Capture order within a video. The two halves of a split spread share a
+    frame; spread_order (set by select, direction-aware) keeps them in the
+    order their printed numbers run."""
     fid = page.get("canonical")
     if not fid or "_f" not in fid:
         return None
     try:
-        return int(fid.rsplit("_f", 1)[1])
+        return int(fid.rsplit("_f", 1)[1]) + 0.5 * page.get("spread_order", 0)
     except ValueError:
         return None
 

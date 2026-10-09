@@ -53,6 +53,10 @@ DEFAULTS: dict[str, Any] = {
         "isolate_page": True,  # edge-density crop to the flat readable page
         "mask_clutter": False,  # experimental: isolate the book, hide desk clutter
         "dewarp": False,
+        # split a flat open two-page spread at the fold into left/right pages
+        # (for books filmed lying open; off = one page per capture, the model
+        # reads only the flat side — right for mid-turn flip videos)
+        "split_spreads": False,
     },
     "transcribe": {
         "max_retries": 1,
