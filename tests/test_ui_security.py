@@ -157,3 +157,60 @@ def test_unchanged_base_url_keeps_stored_key(client, root):
 def test_ollama_probe_only_allows_http(client, url):
     r = client.get("/api/settings/ollama-models", params={"url": url}, headers=AUTH)
     assert r.status_code == 400
+
+
+# ---------------- CSRF against the localhost exemption
+
+@pytest.fixture
+def local(root):
+    return TestClient(create_app(root, token=TOKEN),
+                      base_url="http://localhost:8321", client=("127.0.0.1", 5000))
+
+
+def test_local_same_origin_request_is_allowed(local):
+    r = local.get("/api/projects", headers={"Sec-Fetch-Site": "same-origin",
+                                            "Origin": "http://localhost:8321"})
+    assert r.status_code == 200
+
+
+def test_local_cross_site_fetch_is_rejected(local):
+    # a page on evil.example making the user's browser call localhost
+    r = local.post("/api/jobs/1/cancel", headers={"Sec-Fetch-Site": "cross-site"})
+    assert r.status_code == 401
+
+
+def test_local_foreign_origin_is_rejected(local):
+    # older browsers without Sec-Fetch-* still send Origin on cross-site POSTs
+    r = local.post("/api/jobs/1/cancel", headers={"Origin": "https://evil.example"})
+    assert r.status_code == 401
+
+
+def test_local_other_port_origin_is_rejected(local):
+    # another dev server on localhost is "same-site" but not this app
+    r = local.post("/api/jobs/1/cancel", headers={"Sec-Fetch-Site": "same-site",
+                                                  "Origin": "http://localhost:3000"})
+    assert r.status_code == 401
+
+
+# ---------------- env-sourced keys, proxies
+
+def test_base_url_guard_covers_env_key(client, monkeypatch):
+    # a key that only lives in the environment must not follow a new URL either
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-from-env")
+    r = _put_settings(client, openai_base_url="https://attacker.example/v1")
+    assert r.status_code == 400
+
+
+@pytest.mark.parametrize("hdr", ["X-Forwarded-For", "Forwarded", "X-Real-IP",
+                                 "CF-Connecting-IP"])
+def test_proxied_request_gets_no_localhost_exemption(local, hdr):
+    # a tunnel/reverse proxy on this machine makes remote users look loopback
+    assert local.get("/api/projects", headers={hdr: "1.2.3.4"}).status_code == 401
+
+
+def test_localhost_exemption_can_be_disabled(root, monkeypatch):
+    monkeypatch.setenv("FLIPSCAN_REQUIRE_TOKEN", "1")
+    c = TestClient(create_app(root, token=TOKEN),
+                   base_url="http://localhost:8321", client=("127.0.0.1", 5000))
+    assert c.get("/api/projects").status_code == 401
+    assert c.get("/api/projects", headers=AUTH).status_code == 200

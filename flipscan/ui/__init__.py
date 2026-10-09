@@ -570,8 +570,11 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         # a stored key must never follow a new endpoint unseen — otherwise
         # anyone who can reach the GUI could redirect it to their own server
         old_url = current.get("openai_base_url", "https://api.openai.com/v1")
+        # the backend also falls back to keys from the environment
+        has_key = (current.get("openai_api_key") or os.environ.get("FLIPSCAN_OPENAI_API_KEY")
+                   or os.environ.get("OPENAI_API_KEY"))
         if (s.openai_base_url and s.openai_base_url.rstrip("/") != old_url.rstrip("/")
-                and current.get("openai_api_key") and not s.openai_api_key):
+                and has_key and not s.openai_api_key):
             raise HTTPException(400, "re-enter the API key when changing the "
                                      "OpenAI-compatible base URL")
         save_global_config({
