@@ -241,6 +241,9 @@ def get_backend(cfg: dict) -> TranscriptionBackend:
     if name == "openai":
         from .openai_compat import OpenAICompatBackend
         return OpenAICompatBackend(cfg)
+    if name in ("codex", "claude_cli", "agy"):
+        from .cli_backend import CliBackend
+        return CliBackend(cfg)
     if name == "mock":
         from .mock import MockBackend
         return MockBackend(cfg)

@@ -78,7 +78,8 @@ def addvideo(directory: Path, video: Path, direction: str, upside_down: bool):
 @click.option("--stage", "only_stage", type=click.Choice(STAGES), default=None,
               help=tr("執行單一階段（代表將重新執行該階段）。"))
 @click.option("--force", is_flag=True, help=tr("即使已完成仍重新執行階段。"))
-@click.option("--provider", type=click.Choice(["ollama", "anthropic", "hybrid", "mock"]),
+@click.option("--provider", type=click.Choice(["ollama", "anthropic", "codex", "claude_cli", "agy",
+                                          "hybrid", "mock"]),
               default=None)
 @click.option("--model", default=None, help=tr("覆寫辨識模型名稱。"))
 @click.option("--ollama-url", default=None)
@@ -91,7 +92,9 @@ def run(directory: Path, only_stage, force, provider, model, ollama_url):
     if ollama_url:
         cfg["provider"]["ollama_url"] = ollama_url
     if model:
-        key = "anthropic_model" if cfg["provider"]["name"] == "anthropic" else "ollama_model"
+        key = {"anthropic": "anthropic_model", "codex": "cli_model",
+               "claude_cli": "cli_model", "agy": "cli_model"
+               }.get(cfg["provider"]["name"], "ollama_model")
         cfg["provider"][key] = model
 
     from .project import run_pipeline

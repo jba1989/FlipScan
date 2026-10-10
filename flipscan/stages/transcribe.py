@@ -600,16 +600,23 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
                 escalate = []
             if escalate:
                 log(tr("  hybrid: 正在將 {0} 個頁面升級至 {1} 辨識", len(escalate), target))
-                remote = get_backend(
-                    {**cfg, "provider": {**cfg["provider"], "name": target}})
-                for pid, r in remote.transcribe(
-                        [(pid, ws.root / by_id[pid]["llm_image"]) for pid in escalate],
-                        log).items():
-                    if "error" not in r:
-                        by_id[pid]["status"] = "ok"
-                        _write_result(ws, by_id[pid], r, target)
-                        _cache_page(ws, by_id[pid])
-                ws.save()
+                try:
+                    remote = get_backend(
+                        {**cfg, "provider": {**cfg["provider"], "name": target}})
+                except RuntimeError as e:   # e.g. the CLI isn't installed
+                    log(tr("  hybrid: 無法啟用 {0}，保留本地結果：{1}", target, e))
+                    remote = None
+                items = [(pid, ws.root / by_id[pid]["llm_image"]) for pid in escalate]
+                # Batches want everything at once; the others are a page at a
+                # time (a CLI takes ~1 min/page), so persist after each one
+                chunks = [items] if target == "anthropic" else [[it] for it in items]
+                for chunk in (chunks if remote else ()):
+                    for pid, r in remote.transcribe(chunk, log).items():
+                        if "error" not in r:
+                            by_id[pid]["status"] = "ok"
+                            _write_result(ws, by_id[pid], r, target)
+                            _cache_page(ws, by_id[pid])
+                    ws.save()
         elif provider == "anthropic":
             backend = get_backend(cfg)  # Batches API is inherently all-at-once
             for pid, r in backend.transcribe(todo, log).items():

@@ -214,3 +214,69 @@ def test_localhost_exemption_can_be_disabled(root, monkeypatch):
                    base_url="http://localhost:8321", client=("127.0.0.1", 5000))
     assert c.get("/api/projects").status_code == 401
     assert c.get("/api/projects", headers=AUTH).status_code == 200
+
+
+# ---------------- subscription CLI settings
+
+def _put(client, **over):
+    body = {"provider": "mock", **over}
+    return client.put("/api/settings", json=body, headers=AUTH)
+
+
+def test_get_settings_reports_cli_fields(client, root):
+    s = client.get("/api/settings", headers=AUTH).json()
+    assert s["cli_model"] == "" and s["cli_concurrency"] == 1
+    assert s["cli_timeout"] == 300
+    assert s["codex_logged_in"] is False
+    assert s["codex_login_cmd"].startswith("CODEX_HOME=")
+    assert s["codex_login_cmd"].endswith(" codex login")
+    assert str(root) in s["codex_login_cmd"]
+
+
+def test_codex_logged_in_follows_auth_json(client, root):
+    home = root / ".codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text("{}")
+    assert client.get("/api/settings", headers=AUTH).json()["codex_logged_in"] is True
+
+
+@pytest.mark.parametrize("over", [
+    {"cli_model": "--dangerously-skip-permissions"},
+    {"cli_model": "a b"},
+    {"cli_concurrency": 0}, {"cli_concurrency": 5},
+    {"cli_timeout": 59}, {"cli_timeout": 1801},
+])
+def test_put_rejects_bad_cli_values(client, over):
+    r = _put(client, **over)
+    assert r.status_code in (400, 422)
+    # nothing was written
+    assert client.get("/api/settings", headers=AUTH).json()["provider"] != "mock"
+
+
+def test_put_bad_cli_value_names_the_field(client):
+    assert "cli_model" in _put(client, cli_model="--x").json()["detail"]
+
+
+def test_put_persists_cli_values_and_keeps_the_rest(client, root):
+    (root / "config.toml").write_text(
+        '[provider]\ncli_path = "/opt/bin/claude"\ncli_retries = 4\n')
+    assert _put(client, cli_model="claude-sonnet-4-5", cli_concurrency=2,
+                cli_timeout=600).status_code == 200
+    s = client.get("/api/settings", headers=AUTH).json()
+    assert (s["cli_model"], s["cli_concurrency"], s["cli_timeout"]) == \
+        ("claude-sonnet-4-5", 2, 600)
+    text = (root / "config.toml").read_text()
+    assert 'cli_path = "/opt/bin/claude"' in text and "cli_retries = 4" in text
+
+
+def test_put_without_cli_fields_keeps_current(client):
+    _put(client, cli_model="gpt-5", cli_concurrency=3, cli_timeout=900)
+    _put(client)
+    s = client.get("/api/settings", headers=AUTH).json()
+    assert (s["cli_model"], s["cli_concurrency"], s["cli_timeout"]) == ("gpt-5", 3, 900)
+
+
+def test_put_empty_cli_model_clears_it(client):
+    _put(client, cli_model="gpt-5")
+    _put(client, cli_model="")
+    assert client.get("/api/settings", headers=AUTH).json()["cli_model"] == ""

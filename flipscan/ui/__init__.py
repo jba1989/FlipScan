@@ -6,6 +6,8 @@ import asyncio
 import json
 import os
 import re
+import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -13,6 +15,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from ..backends.cli_backend import EXECUTABLES, check_cli_model, codex_home
 from ..config import load_config, save_global_config
 from ..jobs import CANCELED, DONE, ERROR, JobQueue
 from ..jobs_handlers import concurrency_config, register_handlers
@@ -132,6 +135,14 @@ class KeepBest(BaseModel):
     items: list[dict]  # [{page_id, fig_idx}, ...] — duplicates of one figure
 
 
+CLI_SETTING_KEYS = ("cli_model", "cli_timeout", "cli_concurrency",
+                    "cli_retries", "cli_path")
+
+
+CLI_CONCURRENCY = (1, 4)    # parallel calls: each one spends subscription quota
+CLI_TIMEOUT = (60, 1800)    # seconds per page
+
+
 class Language(BaseModel):
     lang: str
 
@@ -147,6 +158,31 @@ class Settings(BaseModel):
     openai_model: str = ""
     openai_api_key: str = ""
     escalate_to: str = "anthropic"
+    # subscription CLIs; None = keep the stored value
+    cli_model: str | None = None
+    cli_concurrency: int | None = None
+    cli_timeout: int | None = None
+
+
+def _cli_settings(s: Settings, current: dict) -> dict:
+    """The CLI fields a PUT may change, validated; a missing one keeps `current`."""
+    out: dict = {}
+    if s.cli_model is not None:
+        try:
+            out["cli_model"] = check_cli_model(s.cli_model.strip())
+        except RuntimeError as e:
+            raise HTTPException(400, str(e))
+    if s.cli_concurrency is not None:
+        if not CLI_CONCURRENCY[0] <= s.cli_concurrency <= CLI_CONCURRENCY[1]:
+            raise HTTPException(400, tr("cli_concurrency 必須介於 {0} 到 {1}",
+                                        *CLI_CONCURRENCY))
+        out["cli_concurrency"] = s.cli_concurrency
+    if s.cli_timeout is not None:
+        if not CLI_TIMEOUT[0] <= s.cli_timeout <= CLI_TIMEOUT[1]:
+            raise HTTPException(400, tr("cli_timeout 必須介於 {0} 到 {1} 秒",
+                                        *CLI_TIMEOUT))
+        out["cli_timeout"] = s.cli_timeout
+    return out
 
 
 def _iou(a: list[float], b: list[float]) -> float:
@@ -566,6 +602,16 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                                        or os.environ.get("OPENAI_API_KEY")
                                        or os.environ.get("FLIPSCAN_OPENAI_API_KEY")),
             "escalate_to": p.get("escalate_to", "anthropic"),
+            # which subscription CLIs are installed (the UI warns when not)
+            "cli_available": {
+                name: bool(shutil.which(p.get("cli_path") or exe))
+                for name, exe in EXECUTABLES.items()},
+            "cli_model": p.get("cli_model", ""),
+            "cli_concurrency": int(p.get("cli_concurrency", 1)),
+            "cli_timeout": int(p.get("cli_timeout", 300)),
+            # codex logs in under its own isolated home — show how to do that
+            "codex_logged_in": (codex_home() / "auth.json").exists(),
+            "codex_login_cmd": f"CODEX_HOME={shlex.quote(str(codex_home()))} codex login",
         }
 
     @app.put("/api/settings")
@@ -581,6 +627,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         if (s.openai_base_url and s.openai_base_url.rstrip("/") != old_url.rstrip("/")
                 and has_key and not s.openai_api_key):
             raise HTTPException(400, tr("變更 OpenAI 相容的 base URL 時，請重新輸入 API 金鑰"))
+        cli = _cli_settings(s, current)
         save_global_config({
             # save_global_config rewrites the whole file — carry the audiobook
             # section (default narrator voice etc.) through, or it's wiped
@@ -598,6 +645,9 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             "openai_model": s.openai_model or current.get("openai_model", "gpt-4o"),
             "openai_api_key": s.openai_api_key or current.get("openai_api_key", ""),
             "escalate_to": s.escalate_to or current.get("escalate_to", "anthropic"),
+            # not editable here, but the file is rewritten whole — carry through
+            **{k: current[k] for k in CLI_SETTING_KEYS if k in current},
+            **cli,
         }})
         return {"ok": True}
 

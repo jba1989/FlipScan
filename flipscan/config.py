@@ -10,7 +10,7 @@ from .i18n import tr
 
 DEFAULTS: dict[str, Any] = {
     "provider": {
-        "name": "ollama",  # ollama | anthropic | openai | hybrid
+        "name": "ollama",  # ollama | anthropic | openai | codex | claude_cli | agy | hybrid
         "ollama_url": "http://localhost:11434",
         "ollama_model": "gemma4",
         "ollama_num_predict": 4096,
@@ -28,7 +28,14 @@ DEFAULTS: dict[str, Any] = {
         "ollama_concurrency": 1,
         # hybrid: escalate to this provider when a local result matches escalate_on
         "escalate_on": ["low_confidence", "malformed_json", "flags"],
-        "escalate_to": "anthropic",  # anthropic | openai
+        "escalate_to": "anthropic",  # anthropic | openai | codex | claude_cli | agy
+        # local subscription CLIs (codex / claude_cli / agy): images go to the
+        # vendor's cloud and each page spends subscription quota
+        "cli_model": "",       # empty = the tool's own default model
+        "cli_timeout": 300,    # seconds per call
+        "cli_concurrency": 1,
+        "cli_retries": 2,      # extra attempts after a timeout / failure
+        "cli_path": "",        # override the executable (default: found on PATH)
     },
     "extract": {
         "jpeg_quality": 2,  # ffmpeg -qscale:v
@@ -114,6 +121,20 @@ def global_config_path() -> Path:
     return base / "config.toml"
 
 
+# A book folder can come from someone else, so its config.toml must not be
+# able to name a program for us to execute, or redirect an endpoint (which
+# would ship the global API key and every page image to its author).
+WORKSPACE_DENY = {"provider": ("cli_path", "ollama_url", "openai_base_url")}
+
+
+def _untrusted(raw: dict[str, Any]) -> dict[str, Any]:
+    """A workspace config with the keys only the global config may set removed."""
+    return {section: ({k: v for k, v in vals.items()
+                       if k not in WORKSPACE_DENY.get(section, ())}
+                      if isinstance(vals, dict) else vals)
+            for section, vals in raw.items()}
+
+
 def load_config(workspace: Path | None = None) -> dict[str, Any]:
     """Merged config: defaults <- global config <- workspace config.toml <- env."""
     cfg = DEFAULTS
@@ -125,7 +146,7 @@ def load_config(workspace: Path | None = None) -> dict[str, Any]:
         toml_path = Path(workspace) / "config.toml"
         if toml_path.exists():
             with open(toml_path, "rb") as f:
-                cfg = _deep_merge(cfg, tomllib.load(f))
+                cfg = _deep_merge(cfg, _untrusted(tomllib.load(f)))
     for env, (section, key) in ENV_OVERRIDES.items():
         val = os.environ.get(env)
         if val:
