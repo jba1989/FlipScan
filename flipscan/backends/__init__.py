@@ -65,7 +65,33 @@ Rules:
 - "flags": any of "cut_off_text", "blur", "multi_column", "handwriting" that apply, else [].
 """
 
-ESCALATION_FLAGS = {"cut_off_text", "blur", "multi_column", "handwriting"}
+ESCALATION_FLAGS = {"cut_off_text", "blur", "multi_column", "handwriting",
+                    "prompt_echo"}
+
+# Phrases that only ever come from PROMPT. A local model sometimes keeps
+# generating after the page text and recites the instructions into the
+# "markdown" value; everything from the first of these on is not the book.
+PROMPT_ECHO_MARKERS = (
+    "You are transcribing a photographed page",
+    "Transcribe ONLY the flat",
+    "Return ONLY a JSON object",
+    '"markdown": transcribe the body text',
+    "OMIT running headers",
+    "in the page's own script and language",
+    "若原書是繁體中文",
+    "REFLOW the text into flowing paragraphs",
+)
+
+
+def strip_prompt_echo(md: str) -> tuple[str, bool]:
+    """Cut a recited copy of the prompt off the transcription."""
+    hits = [i for i in (md.find(m) for m in PROMPT_ECHO_MARKERS) if i != -1]
+    if not hits:
+        return md, False
+    cut = md[:min(hits)].rstrip()
+    if cut.endswith("Rules:"):
+        cut = cut[:-len("Rules:")].rstrip()
+    return cut, True
 
 
 class TranscriptionError(Exception):
@@ -99,7 +125,7 @@ def salvage_result(raw: str | None) -> dict[str, Any] | None:
             break
         out.append(ch)
         i += 1
-    md = "".join(out).strip()
+    md, _echoed = strip_prompt_echo("".join(out).strip())
     if len(md) < 3:
         return None
     return {"markdown": md, "page_number_printed": None, "confidence": "low",
@@ -143,6 +169,10 @@ def parse_result(raw: str) -> dict[str, Any]:
             })
     obj["regions"] = regions
     obj["flags"] = [f for f in (obj.get("flags") or []) if isinstance(f, str)]
+    obj["markdown"], echoed = strip_prompt_echo(obj["markdown"])
+    if echoed:
+        obj["flags"].append("prompt_echo")
+        obj["confidence"] = "low"
     return obj
 
 

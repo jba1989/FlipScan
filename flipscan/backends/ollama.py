@@ -141,8 +141,9 @@ class OllamaBackend(TranscriptionBackend):
     def _attempt(self, image_b64: str):
         """Retry ladder for one image. Returns (parsed_result | None, last_raw).
         Retries get a doubled token budget (dense pages truncate their JSON) and
-        a repetition penalty (greedy decoding can lock into one phrase)."""
-        last_raw = None
+        a repetition penalty (greedy decoding can lock into one phrase); a reply
+        that recited the prompt is retried too, and kept trimmed if all do."""
+        last_raw, echoed = None, None
         for attempt in range(self.max_retries + 1):
             budget = self.num_predict * (2 ** attempt)
             opts = None if attempt == 0 else {"repeat_penalty": 1.15,
@@ -152,10 +153,14 @@ class OllamaBackend(TranscriptionBackend):
             except httpx.HTTPError:
                 continue
             try:
-                return parse_result(raw), raw
+                result = parse_result(raw)
             except TranscriptionError:
                 last_raw = raw
-        return None, last_raw
+                continue
+            if "prompt_echo" not in result["flags"]:
+                return result, raw
+            echoed = (result, raw)    # trimmed text is usable; try for clean
+        return echoed if echoed else (None, last_raw)
 
     def _b64(self, img) -> str:
         import cv2

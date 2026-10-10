@@ -1,5 +1,7 @@
 """Unit tests for FlipScan's pure-logic core."""
 
+import json
+
 import numpy as np
 import pytest
 
@@ -634,3 +636,29 @@ def test_write_figure_stays_under_size_budget(tmp_path):
     write_figure(out, small, {"figures": {"upscale": 2.0, "max_kb": 1000}})
     import cv2
     assert cv2.imread(str(out)).shape[:2] == (680, 1000)   # small chart keeps 2x
+
+
+def test_parse_result_cuts_a_recited_prompt():
+    from flipscan.backends import parse_result
+    md = ("鴻海的趨勢形狀\n\n(完) You are transcribing a photographed page of a printed "
+          "book.\n\nRules:\n- \"markdown\": transcribe the body text faithfully.")
+    r = parse_result(json.dumps({"markdown": md, "confidence": "high", "flags": []}))
+    assert r["markdown"] == "鴻海的趨勢形狀\n\n(完)"
+    assert "prompt_echo" in r["flags"] and r["confidence"] == "low"
+    clean = parse_result(json.dumps({"markdown": "正文", "confidence": "high"}))
+    assert clean["flags"] == [] and clean["confidence"] == "high"
+
+
+def test_ollama_retries_a_reply_that_recited_the_prompt():
+    from flipscan.backends.ollama import OllamaBackend
+    from flipscan.config import DEFAULTS
+    echo = json.dumps({"markdown": "正文 Return ONLY a JSON object", "confidence": "high"})
+    good = json.dumps({"markdown": "正文", "confidence": "high"})
+    be = OllamaBackend(DEFAULTS)
+    replies = iter([echo, good])
+    be._request = lambda *a, **k: next(replies)
+    result, _raw = be._attempt("img")
+    assert result["markdown"] == "正文" and "prompt_echo" not in result["flags"]
+    be._request = lambda *a, **k: echo                 # every attempt echoes
+    result, _raw = be._attempt("img")
+    assert result["markdown"] == "正文" and "prompt_echo" in result["flags"]
