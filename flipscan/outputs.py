@@ -105,11 +105,11 @@ def record_output(ws: Workspace, filename: str) -> None:
 
 
 _REASON = {
-    "book": "the book text changed",
-    "figures": "figure images changed",
-    "proofs": "proofread decisions changed",
-    "cover": "the cover changed",
-    "assemble": "the book was reassembled",
+    "book": "書籍文字已變更",
+    "figures": "圖表圖片已變更",
+    "proofs": "校對決定已變更",
+    "cover": "封面已變更",
+    "assemble": "書籍已重新組裝",
 }
 
 
@@ -132,15 +132,15 @@ def output_status(ws: Workspace) -> list[dict]:
                 reasons = [_REASON[k] for k in _REASON
                            if old.get(k) != parts[k]]
                 if not reasons:
-                    reasons = ["the book state changed"]
+                    reasons = ["書籍狀態已變更"]
         elif isinstance(stored, str):     # stamped before per-component tracking
             stale = stored != sig
             if stale:
-                reasons = ["built from older book text (before change tracking "
-                           "— rebuild once and future badges say exactly what "
-                           "changed)"]
+                reasons = ["由較舊的書籍文字建置（於變更追蹤之前 "
+                           "— 重新建置一次，之後的標籤將準確顯示 "
+                           "變更項目）"]
         else:                             # never stamped at all
-            reasons = ["no build record — rebuild once to start tracking"]
+            reasons = ["無建置紀錄 — 重新建置一次以開始追蹤"]
         rows.append({"name": f.name, "stale": stale, "reasons": reasons,
                      "built_at": at})
     return rows

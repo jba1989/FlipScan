@@ -15,10 +15,10 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         expected = video.get("nb_frames")
         existing = sum(1 for _ in out_dir.glob("f*.jpg")) if out_dir.exists() else 0
         if expected and existing >= expected:
-            log(f"  {vid}: {existing} frames already extracted, skipping")
+            log(f"  {vid}：已擷取過 {existing} 個影格，略過")
             totals[vid] = existing
             continue
-        log(f"  {vid}: extracting frames from {video['path']} ...")
+        log(f"  {vid}：正在從 {video['path']} 擷取影格 ...")
         count = extract_frames(ws.root / video["path"], out_dir, jpeg_quality=quality)
         video["frames_extracted"] = count
         totals[vid] = count

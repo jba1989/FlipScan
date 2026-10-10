@@ -98,10 +98,10 @@ def _matches(candidate: str | None, token: str) -> bool:
 
 def _denied(request: Request):
     if request.url.path.startswith("/api/"):
-        return JSONResponse({"detail": "FlipScan access token required"}, 401)
+        return JSONResponse({"detail": "需要 FlipScan 存取權杖"}, 401)
     return PlainTextResponse(
-        "FlipScan: access token required.\n\nOpen the link with ?token=... that "
-        "`flipscan ui` printed in its terminal (or read <projects root>/.ui_token).",
+        "FlipScan：需要存取權杖。\n\n請開啟帶有 ?token=... 的連結，該連結已由 "
+        "`flipscan ui` 顯示於終端機中（或讀取 <projects root>/.ui_token）。",
         401)
 
 

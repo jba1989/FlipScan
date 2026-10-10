@@ -227,7 +227,7 @@ class JobQueue:
         c = self._conn()
         orphans = c.execute("SELECT id FROM jobs WHERE status='running'").fetchall()
         for r in orphans:
-            self._log(r["id"], "[queue] resuming after a server restart")
+            self._log(r["id"], "[queue] 伺服器重新啟動後繼續執行")
             c.execute("UPDATE jobs SET status='queued', started_at=NULL, "
                       "cancel=0 WHERE id=?", (r["id"],))
         return len(orphans)
@@ -297,7 +297,7 @@ class JobQueue:
             log = lambda line, _j=jid: self._log(_j, str(line))
             should_cancel = lambda _j=jid: self._canceled(_j)
             if handler is None:
-                self._finish(jid, ERROR, f"no handler for kind {job['kind']!r}")
+                self._finish(jid, ERROR, f"沒有針對類型 {job['kind']!r} 的處理常式")
                 continue
             try:
                 params = json.loads(job["params"] or "{}")
@@ -310,9 +310,9 @@ class JobQueue:
                 self._finish(jid, CANCELED if should_cancel() else DONE,
                              result=ret)
             except JobCanceled:
-                self._log(jid, "[queue] canceled")
+                self._log(jid, "[queue] 已取消")
                 self._finish(jid, CANCELED)
             except Exception as e:                       # noqa: BLE001
-                self._log(jid, f"[queue] ERROR: {e}")
+                self._log(jid, f"[queue] 錯誤: {e}")
                 self._log(jid, traceback.format_exc())
                 self._finish(jid, ERROR, str(e))

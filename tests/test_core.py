@@ -662,3 +662,18 @@ def test_ollama_retries_a_reply_that_recited_the_prompt():
     be._request = lambda *a, **k: echo                 # every attempt echoes
     result, _raw = be._attempt("img")
     assert result["markdown"] == "正文" and "prompt_echo" in result["flags"]
+
+
+def test_reshoot_list_skips_notes_and_crop_items():
+    from types import SimpleNamespace
+    from flipscan.review import reshoot_list
+    pages = [
+        {"id": "p0001", "status": "ok", "flags": ["multi_column"]},          # note only
+        {"id": "p0002", "status": "ok", "flags": ["cut_off_text"]},          # real reason
+        {"id": "p0003", "status": "ok", "flags": [], "number_rejected": True,
+         "regions": [{"bbox_norm": [0, 0, 1, 1]}], "figures": []},          # reshoot + no crop
+    ]
+    items = {i["id"]: i["reasons"] for i in reshoot_list(SimpleNamespace(manifest={"pages": pages}))}
+    assert "p0001" not in items
+    assert items["p0002"] == ["標記：文字被裁切"]
+    assert items["p0003"] == ["頁碼辨識錯誤（打亂了頁面順序）"]          # crop note dropped

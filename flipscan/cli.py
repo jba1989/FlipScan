@@ -22,20 +22,20 @@ def main():
 @click.argument("directory", type=click.Path(path_type=Path))
 @click.option("--video", "videos", multiple=True, required=True,
               type=click.Path(exists=True, path_type=Path),
-              help="Source video. Repeat to add several; pages captured in "
-                   "more than one video merge automatically (best capture wins).")
+              help="來源影片。可重複指定以加入多部影片；出現在"
+                   "多部影片中的頁面會自動合併（保留最佳拍攝畫面）。")
 @click.option("--direction", "directions", multiple=True,
               type=click.Choice(["forward", "reverse"]),
-              help="Optional flip-direction hint per --video (default: forward; "
-                   "order is fixed automatically from page matches and printed numbers).")
-@click.option("--reverse", is_flag=True, help="Shorthand: single video shot back-to-front.")
-@click.option("--title", default=None, help="Book title (EPUB metadata).")
+              help="每個 --video 的可選翻頁方向提示（預設：forward；"
+                   "會根據頁面比對結果與印刷頁碼自動修正順序）。")
+@click.option("--reverse", is_flag=True, help="簡記：單一影片從後往前拍攝。")
+@click.option("--title", default=None, help="書籍標題（EPUB 中繼資料）。")
 @click.option("--expected-pages", type=int, default=None,
-              help="Expected page count for gap detection.")
+              help="用於缺頁偵測的預期頁數。")
 def init(directory: Path, videos, directions, reverse, title, expected_pages):
     """Create a workspace: copy videos in, probe fps, write manifest.json."""
     if directions and len(directions) != len(videos):
-        raise click.UsageError("--direction must be given once per --video (or not at all)")
+        raise click.UsageError("--direction 必須為每個 --video 指定一次（或完全不指定）")
 
     from .project import create_project
     specs = [
@@ -48,7 +48,7 @@ def init(directory: Path, videos, directions, reverse, title, expected_pages):
     ]
     ws = create_project(directory, specs, title=title,
                         expected_pages=expected_pages, log=click.echo)
-    click.echo(f"Workspace ready: {ws.root} — next: flipscan run {ws.root}")
+    click.echo(f"工作區已就緒：{ws.root} — 下一步：flipscan run {ws.root}")
 
 
 # ---------------------------------------------------------------- addvideo
@@ -57,7 +57,7 @@ def init(directory: Path, videos, directions, reverse, title, expected_pages):
 @click.argument("directory", type=click.Path(exists=True, path_type=Path))
 @click.argument("video", type=click.Path(exists=True, path_type=Path))
 @click.option("--direction", type=click.Choice(["forward", "reverse"]), default="forward")
-@click.option("--upside-down", is_flag=True, help="Video was shot rotated 180 degrees.")
+@click.option("--upside-down", is_flag=True, help="影片拍攝時旋轉了 180 度。")
 def addvideo(directory: Path, video: Path, direction: str, upside_down: bool):
     """Add another capture video — shared pages merge, new pages slot in.
 
@@ -67,7 +67,7 @@ def addvideo(directory: Path, video: Path, direction: str, upside_down: bool):
     from .project import add_video
     add_video(ws, video, direction=direction, rotate=180 if upside_down else 0,
               log=click.echo)
-    click.echo(f"video added — run `flipscan run {directory}` to merge it in")
+    click.echo(f"影片已加入 — 執行 `flipscan run {directory}` 以合併進去")
 
 
 # ---------------------------------------------------------------- run
@@ -75,11 +75,11 @@ def addvideo(directory: Path, video: Path, direction: str, upside_down: bool):
 @main.command()
 @click.argument("directory", type=click.Path(exists=True, path_type=Path))
 @click.option("--stage", "only_stage", type=click.Choice(STAGES), default=None,
-              help="Run a single stage (implies re-running it).")
-@click.option("--force", is_flag=True, help="Re-run stages even if already done.")
+              help="執行單一階段（代表將重新執行該階段）。")
+@click.option("--force", is_flag=True, help="即使已完成仍重新執行階段。")
 @click.option("--provider", type=click.Choice(["ollama", "anthropic", "hybrid", "mock"]),
               default=None)
-@click.option("--model", default=None, help="Override the transcription model name.")
+@click.option("--model", default=None, help="覆寫辨識模型名稱。")
 @click.option("--ollama-url", default=None)
 def run(directory: Path, only_stage, force, provider, model, ollama_url):
     """Run the pipeline (extract -> ... -> assemble), resuming where it left off."""
@@ -108,10 +108,10 @@ def review(directory: Path):
     out = generate_review(ws, log=click.echo)
     items = reshoot_list(ws)
     if items:
-        click.echo(f"reshoot list ({len(items)} pages): "
+        click.echo(f"重拍清單 ({len(items)} 頁)："
                    + ", ".join(i["id"] for i in items))
     else:
-        click.echo("reshoot list: empty — all pages look good")
+        click.echo("重拍清單：無 — 所有頁面看起來都正常")
     click.echo(f"open {out}")
 
 
@@ -119,7 +119,7 @@ def review(directory: Path):
 
 @main.command()
 @click.argument("directory", type=click.Path(exists=True, path_type=Path))
-@click.option("--page", "page_id", required=True, help="Page id, e.g. p0142")
+@click.option("--page", "page_id", required=True, help="頁面 ID，例如 p0142")
 @click.argument("image", type=click.Path(exists=True, path_type=Path))
 def patch(directory: Path, page_id: str, image: Path):
     """Replace a page's capture with a re-shot photo and re-process it."""
@@ -129,7 +129,7 @@ def patch(directory: Path, page_id: str, image: Path):
     cfg = load_config(ws.root)
     page = ws.page(page_id)
     if page is None:
-        raise click.UsageError(f"no page {page_id!r} in {ws.root}")
+        raise click.UsageError(f"{ws.root} 中找不到頁面 {page_id!r}")
 
     patches = ws.root / "patches"
     patches.mkdir(exist_ok=True)
@@ -141,7 +141,7 @@ def patch(directory: Path, page_id: str, image: Path):
         page.pop(key, None)
     page["md"] = None
 
-    click.echo(f"{page_id}: preprocessing replacement photo")
+    click.echo(f"{page_id}: 正在前處理替換照片")
     from .stages.preprocess import preprocess_page
     preprocess_page(ws, page, cfg)
     ws.save()
@@ -151,8 +151,8 @@ def patch(directory: Path, page_id: str, image: Path):
     transcribe_run(ws, cfg, log=click.echo)
 
     ws.stage_reset("figures")  # re-run figures + assemble with the new page
-    click.echo(f"{page_id}: patched — run `flipscan run {directory}` then "
-               f"`flipscan build {directory}` to rebuild outputs")
+    click.echo(f"{page_id}: 已完成補拍 — 請先執行 `flipscan run {directory}`，"
+               f"再執行 `flipscan build {directory}` 以重新建置輸出檔")
 
 
 # ---------------------------------------------------------------- addpage
@@ -161,10 +161,10 @@ def patch(directory: Path, page_id: str, image: Path):
 @click.argument("directory", type=click.Path(exists=True, path_type=Path))
 @click.argument("image", type=click.Path(exists=True, path_type=Path))
 @click.option("--position", default="end",
-              help='"start", "end", or a page index (default: end)')
+              help='"start"、"end" 或頁面索引（預設：end）')
 @click.option("--cover", is_flag=True,
-              help="Use this photo as the book cover (EPUB cover image, "
-                   "excluded from body text)")
+              help="將此照片作為書籍封面（EPUB 封面圖片，"
+                   "不包含在內文中）")
 def addpage(directory: Path, image: Path, position: str, cover: bool):
     """Add a page from a photo — covers, inside-cover text, or missed pages."""
     ws = Workspace.open(directory)
@@ -172,8 +172,8 @@ def addpage(directory: Path, image: Path, position: str, cover: bool):
     from .project import add_page_from_photo
     page = add_page_from_photo(ws, cfg, image, position=position,
                                role="cover" if cover else None, log=click.echo)
-    click.echo(f"{page['id']} added — run `flipscan run {directory}` then "
-               f"`flipscan build {directory}` to rebuild outputs")
+    click.echo(f"{page['id']} 已加入 — 請先執行 `flipscan run {directory}`，"
+               f"再執行 `flipscan build {directory}` 以重新建置輸出檔")
 
 
 # ---------------------------------------------------------------- delpage
@@ -181,7 +181,7 @@ def addpage(directory: Path, image: Path, position: str, cover: bool):
 @main.command()
 @click.argument("directory", type=click.Path(exists=True, path_type=Path))
 @click.argument("page_id")
-@click.option("--restore", is_flag=True, help="Un-delete a previously deleted page.")
+@click.option("--restore", is_flag=True, help="還原先前已刪除的頁面。")
 def delpage(directory: Path, page_id: str, restore: bool):
     """Delete an erroneous page from the book (soft: restorable, survives re-runs)."""
     ws = Workspace.open(directory)
@@ -189,9 +189,9 @@ def delpage(directory: Path, page_id: str, restore: bool):
     try:
         set_page_deleted(ws, page_id, not restore)
     except KeyError:
-        raise click.UsageError(f"no page {page_id!r}")
-    click.echo(f"{page_id} {'restored' if restore else 'deleted'} — "
-               f"run `flipscan build {directory}` to rebuild outputs")
+        raise click.UsageError(f"找不到頁面 {page_id!r}")
+    click.echo(f"{page_id} {'已還原' if restore else '已刪除'} — "
+               f"請執行 `flipscan build {directory}` 以重新建置輸出檔")
 
 
 # ---------------------------------------------------------------- build
@@ -199,17 +199,17 @@ def delpage(directory: Path, page_id: str, restore: bool):
 @main.command()
 @click.argument("directory", type=click.Path(exists=True, path_type=Path))
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=None,
-              help="Output file (default: out/<workspace>.<ext>)")
+              help="輸出檔案（預設：out/<workspace>.<ext>）")
 @click.option("--format", "formats", multiple=True,
               type=click.Choice(["epub", "pdf", "pdf-latex", "pdf-facsimile"]),
-              help="Output format; repeatable (default: epub). pdf-latex is the "
-                   "high-quality pandoc+XeLaTeX PDF (needs those tools installed).")
+              help="輸出格式；可重複指定（預設：epub）。pdf-latex 為"
+                   "高品質 pandoc+XeLaTeX PDF（系統需先安裝這些工具）。")
 @click.option("--title", default=None)
 @click.option("--author", default=None)
 @click.option("--device", default="none",
               type=click.Choice(["none", "xteink-x3", "xteink-x4", "eink-6in",
                                  "remarkable-2", "tablet"]),
-              help="Size for a target reader (images + reflowed/LaTeX PDF page).")
+              help="目標閱讀器的尺寸（圖片 + 重排/LaTeX PDF 頁面）。")
 def build(directory: Path, output, formats, title, author, device):
     """Build the book (epub / pdf / pdf-latex / pdf-facsimile) from markdown."""
     ws = Workspace.open(directory)
@@ -258,10 +258,10 @@ def status(directory: Path):
 
 @main.command()
 @click.option("--root", type=click.Path(path_type=Path), default=None,
-              help="Directory containing project workspaces (default: FLIPSCAN_ROOT or cwd)")
+              help="包含專案工作區的目錄（預設：FLIPSCAN_ROOT 或目前目錄）")
 @click.option("--host", default="0.0.0.0",
-              help="Bind address (default 0.0.0.0 = reachable from other "
-                   "devices on your network; use 127.0.0.1 for this machine only)")
+              help="繫結位址（預設 0.0.0.0 = 區域網路內其他裝置可存取；"
+                   "若僅限本機存取請使用 127.0.0.1）")
 @click.option("--port", type=int, default=8321)
 def ui(root, host, port):
     """Start the local web GUI (requires `pip install flipscan[ui]`)."""
@@ -272,26 +272,26 @@ def ui(root, host, port):
         from .ui import serve
     except ImportError:
         raise click.ClickException(
-            "GUI dependencies missing — install with: pip install 'flipscan[ui]'")
+            "缺少 GUI 相依套件 — 請使用以下指令安裝：pip install 'flipscan[ui]'")
     root = root or Path(os.environ.get("FLIPSCAN_ROOT", "."))
     root.mkdir(parents=True, exist_ok=True)   # ensure the projects folder exists
     from .ui.security import load_or_create_token
     tok = f"?token={load_or_create_token(root)}"
-    click.echo(f"FlipScan GUI  (projects root: {root.resolve()})")
+    click.echo(f"FlipScan GUI  (專案根目錄：{root.resolve()})")
     # token included: inside Docker even the host's own browser isn't loopback
-    click.echo(f"  this machine:  http://localhost:{port}/{tok}")
+    click.echo(f"  本機：        http://localhost:{port}/{tok}")
     if host == "0.0.0.0":
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             lan_ip = s.getsockname()[0]
             s.close()
-            click.echo(f"  your network:  http://{lan_ip}:{port}/{tok}  (phone, tablet, ...)")
-            click.echo(f"  phone mic:     https://{lan_ip}:{port + 1}/{tok}  "
-                       f"(voice recording needs https — accept the "
-                       f"certificate warning once)")
-            click.echo("  the token link is the password for other devices — "
-                       "don't share it beyond people you trust")
+            click.echo(f"  區域網路：    http://{lan_ip}:{port}/{tok}  (手機、平板等…)")
+            click.echo(f"  手機麥克風：  https://{lan_ip}:{port + 1}/{tok}  "
+                       f"(語音錄音需要 https — 請接受一次"
+                       f"安全性憑證警告)")
+            click.echo("  權杖連結即為其他裝置的存取密碼 — "
+                       "請勿分享給不信任的人員")
         except OSError:
             pass
     serve(root, host=host, port=port)
@@ -301,7 +301,7 @@ def ui(root, host, port):
 
 @main.command()
 @click.option("--root", type=click.Path(path_type=Path), default=None,
-              help="Directory containing project workspaces (default: FLIPSCAN_ROOT or cwd)")
+              help="包含專案工作區的目錄（預設：FLIPSCAN_ROOT 或目前目錄）")
 def worker(root):
     """Run the durable background job worker as its own process.
 
@@ -324,15 +324,15 @@ def worker(root):
     jobq = JobQueue(root / "jobs.db", lane_caps=lane_caps, kind_lanes=kind_lanes)
     register_handlers(jobq, root)
     resumed = jobq.requeue_orphans()
-    click.echo(f"FlipScan worker  (projects root: {root.resolve()})")
-    click.echo(f"  resumed {resumed} orphaned job(s); waiting for work…")
+    click.echo(f"FlipScan 背景工作處理器  (專案根目錄：{root.resolve()})")
+    click.echo(f"  已繼續執行 {resumed} 個孤立工作；等待工作中…")
     jobq.start_worker()
     try:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
         jobq.stop()
-        click.echo("worker stopped")
+        click.echo("工作處理器已停止")
 
 
 if __name__ == "__main__":

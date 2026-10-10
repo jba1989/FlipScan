@@ -62,7 +62,7 @@ class Workspace:
         ws = cls(root)
         ws.root.mkdir(parents=True, exist_ok=True)
         if ws.manifest_path.exists():
-            raise FileExistsError(f"{ws.manifest_path} already exists; workspace is initialized")
+            raise FileExistsError(f"{ws.manifest_path} 已存在；工作區已初始化")
         for d in SUBDIRS:
             (ws.root / d).mkdir(exist_ok=True)
         book_meta = {"title": title, "expected_pages": expected_pages}
@@ -84,7 +84,7 @@ class Workspace:
         ws = cls(root)
         if not ws.manifest_path.exists():
             raise FileNotFoundError(
-                f"No manifest.json in {ws.root} — run `flipscan init` first"
+                f"{ws.root} 中沒有 manifest.json — 請先執行 `flipscan init`"
             )
         return ws
 

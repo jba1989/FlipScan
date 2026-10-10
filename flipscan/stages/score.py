@@ -36,7 +36,7 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         if out_path.exists():
             with open(out_path, encoding="utf-8") as f:
                 if len(json.load(f)) == len(frames):
-                    log(f"  {vid}: scores exist, skipping")
+                    log(f"  {vid}: 分數已存在，略過")
                     continue
         log(f"  {vid}: scoring {len(frames)} frames")
         records = []

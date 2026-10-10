@@ -124,7 +124,7 @@ def write_figure(path, crop: np.ndarray, cfg: dict) -> None:
         out = enhance_figure(crop, scale)
         ok, buf = cv2.imencode(".png", out, params)
         if not ok:
-            raise RuntimeError(f"PNG encode failed for {path}")
+            raise RuntimeError(f"{path} 的 PNG 編碼失敗")
         if len(buf) <= budget or min(out.shape[:2]) < 200:
             break
         scale *= 0.85
@@ -249,4 +249,4 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         page["figures"] = page_figs
     ws.save()
     ws.stage_done("figures", figure_count=total)
-    log(f"  {total} figures cropped -> figures/")
+    log(f"  已裁切 {total} 個圖表 -> figures/")

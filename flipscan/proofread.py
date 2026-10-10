@@ -91,7 +91,7 @@ def chapters(ws: Workspace) -> list[tuple[str, str]]:
     from .build_epub import split_chapters
     book = ws.work_file("book.md")
     if not book.exists():
-        raise FileNotFoundError("work/book.md missing — run the pipeline first")
+        raise FileNotFoundError("找不到 work/book.md — 請先執行處理流程")
     return split_chapters(book.read_text(encoding="utf-8"))
 
 
@@ -105,22 +105,22 @@ def lint_chapter(md: str) -> list[dict]:
                       "replacement": None, "note": note, "source": "lint"})
 
     for m in re.finditer(r"\[\[region-\d+\]\]", md):
-        add("formatting", "high", m.group(0), "unresolved figure placeholder")
+        add("formatting", "high", m.group(0), "未解析的圖表預留位置")
     # words containing the U+FFFD replacement character: encoding damage
     bad_words = sorted({w for w in re.findall(r"\S*�\S*", md)})
     for w in bad_words[:8]:
-        add("ocr", "medium", w, "unreadable character — likely a lost accent")
+        add("ocr", "medium", w, "無法辨識的字元 — 可能是遺失的變音符號")
     if len(bad_words) > 8:
         add("ocr", "medium", bad_words[8],
-            f"...and {len(bad_words) - 8} more words with unreadable characters")
+            f"...以及另外 {len(bad_words) - 8} 個含有無法辨識字元的單詞")
     for m in re.finditer(r"\b(\w{3,})\s+\1\b", md, re.I):  # "the the"
-        add("ocr", "low", m.group(0), "doubled word")
+        add("ocr", "low", m.group(0), "重複的字詞")
     # consecutive duplicate paragraphs (same page captured twice)
     paras = [p.strip() for p in md.split("\n\n") if len(p.strip()) > 80]
     for a, b in zip(paras, paras[1:]):
         if a == b:
             add("continuity", "high", a[:120],
-                "identical paragraph appears twice in a row — duplicated page?")
+                "連續出現兩個完全相同的段落 — 是否為重複頁面？")
     return finds[:MAX_FINDINGS]
 
 
@@ -223,7 +223,7 @@ def _parse_findings(raw: str) -> list[dict]:
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
-        raise ValueError(f"no JSON in proofread response: {raw[:200]!r}")
+        raise ValueError(f"校對回應中沒有 JSON：{raw[:200]!r}")
     obj = json.loads(text[start:end + 1])
     out = [_norm_finding(f) for f in obj.get("findings", [])
            if isinstance(f, dict) and f.get("quote")]
@@ -275,18 +275,18 @@ def edit_is_destructive(q: str, r: str) -> str | None:
     reason, or None when the edit looks like a genuine small correction."""
     from difflib import SequenceMatcher
     if len(_IMG_MD.findall(r)) < len(_IMG_MD.findall(q)):
-        return "the fix would delete a figure reference"
+        return "此修復會刪除圖表參照"
     if len(q) > 40 and len(r) < 0.6 * len(q):
-        return "the fix deletes most of the quoted text"
+        return "此修復會刪除大部分引文文字"
     digits_q = re.findall(r"\d+", q)
     digits_r = re.findall(r"\d+", r)
     marker = any(s in q or s in r
                  for s in ("<sup", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸",
                            "⁹", "⁰", "ⁱ"))
     if digits_q != digits_r and marker:
-        return "the fix rewrites footnote/reference numbers"
+        return "此修復會改寫註腳/參照編號"
     if SequenceMatcher(None, q, r).ratio() < 0.55 and len(q) > 20:
-        return "the fix rewrites rather than corrects"
+        return "此修復偏向改寫而非修正"
     return None
 
 
@@ -371,8 +371,8 @@ def name_consistency_findings(ws: Workspace, chapter_md: str) -> list[dict]:
             out.append({
                 "type": "spelling", "severity": "medium", "quote": minority,
                 "replacement": best, "apply_all": True, "source": "lint",
-                "note": f"'{best}' appears {best_n}× in this book, this "
-                        f"variant {mc}× — majority spelling wins",
+                "note": f"'{best}' 在本書中出現 {best_n} 次，此"
+                        f"異體寫法出現 {mc} 次 — 以多數寫法為準",
             })
     return out[:10]
 
@@ -381,7 +381,7 @@ def proofread_chapter(ws: Workspace, cfg: dict, idx: int) -> dict:
     """Run lint + LLM on one chapter; store findings and the proofed copy."""
     chs = chapters(ws)
     if not 0 <= idx < len(chs):
-        raise IndexError(f"no chapter {idx}")
+        raise IndexError(f"找不到第 {idx} 章")
     title, md = chs[idx]
     reference = title.strip().lower() in REFERENCE_TITLES
     findings = lint_chapter(md)
@@ -425,15 +425,15 @@ def toggle_finding(ws: Workspace, idx: int, fi: int, enabled: bool,
     (an empty replacement deletes the quoted text)."""
     d = load_proof(ws, idx)
     if d is None:
-        raise FileNotFoundError("chapter not proofread yet")
+        raise FileNotFoundError("章節尚未校對")
     chs = chapters(ws)
     if not 0 <= idx < len(chs):
-        raise IndexError(f"no chapter {idx}")
+        raise IndexError(f"找不到第 {idx} 章")
     _title, md = chs[idx]
     if chapter_hash(md) != d.get("base_hash"):
-        raise ValueError("chapter text changed since this proof — re-run it")
+        raise ValueError("章節內文自本次校對後已有變更 — 請重新執行校對")
     if not 0 <= fi < len(d["findings"]):
-        raise IndexError(f"no finding {fi}")
+        raise IndexError(f"找不到問題項目 {fi}")
     d["findings"][fi]["rejected"] = not enabled
     if set_replacement:
         d["findings"][fi]["replacement"] = replacement or ""
@@ -513,20 +513,20 @@ def resolve_finding(ws: Workspace, cfg: dict, idx: int, fi: int) -> dict:
     user-reviewable — the page OCR text is untouched)."""
     d = load_proof(ws, idx)
     if d is None:
-        raise FileNotFoundError("chapter not proofread yet")
+        raise FileNotFoundError("章節尚未校對")
     _title, md = chapters(ws)[idx]
     if chapter_hash(md) != d.get("base_hash"):
-        raise ValueError("chapter text changed since this proof — re-run it")
+        raise ValueError("章節內文自本次校對後已有變更 — 請重新執行校對")
     f = d["findings"][fi]
     page = ws.page(f.get("page") or "")
     if page is None or not page.get("llm_image"):
-        raise LookupError("no source page image for this finding")
+        raise LookupError("找不到此項校對發現的來源頁面影像")
     corrected = reread_from_image(cfg, ws.root / page["llm_image"], f["quote"])
     if not corrected or _squashed(corrected) == _squashed(f["quote"]):
-        raise LookupError("the page re-read matched the OCR — fix it with ✎ "
-                          "or re-photograph the page")
+        raise LookupError("重新辨識頁面的結果與 OCR 相符 — 請使用 ✎ 修正，"
+                          "或重新拍攝該頁面")
     f["replacement"] = corrected
-    f["note"] = (f.get("note", "") + " [re-read from the page image]").strip()
+    f["note"] = (f.get("note", "") + " [已從頁面影像重新辨識]").strip()
     f.pop("rejected", None)
     for x in d["findings"]:
         x["applied"] = False
@@ -561,10 +561,10 @@ def reread_chapter_stuck(ws: Workspace, cfg: dict, idx: int) -> dict:
     image, so safe results auto-apply and only the truly-manual ones remain."""
     d = load_proof(ws, idx)
     if d is None:
-        raise FileNotFoundError("chapter not proofread yet")
+        raise FileNotFoundError("章節尚未進行校對")
     _title, md = chapters(ws)[idx]
     if chapter_hash(md) != d.get("base_hash"):
-        raise ValueError("chapter text changed since this proof — re-run it")
+        raise ValueError("章節內文自本次校對後已有變更 — 請重新執行校對")
 
     touched = []
     attempted = 0
@@ -582,7 +582,7 @@ def reread_chapter_stuck(ws: Workspace, cfg: dict, idx: int) -> dict:
             corrected = None
         if corrected and _squashed(corrected) != _squashed(f["quote"]):
             f["replacement"] = corrected
-            f["note"] = (f.get("note", "") + " [re-read from the page image]").strip()
+            f["note"] = (f.get("note", "") + " [已從頁面影像重新辨識]").strip()
             f.pop("rejected", None)
             touched.append(i)
 
@@ -609,7 +609,7 @@ def refresh_proof(ws: Workspace, idx: int) -> dict | None:
     simply stop applying. Returns None if the chapter was never proofed."""
     chs = chapters(ws)
     if not 0 <= idx < len(chs):
-        raise IndexError(f"no chapter {idx}")
+        raise IndexError(f"找不到章節 {idx}")
     title, md = chs[idx]
     d = load_proof(ws, idx)
     if d is None:

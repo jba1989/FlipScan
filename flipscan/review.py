@@ -10,6 +10,11 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from .workspace import Workspace
 
 
+# reason prefixes the reshoot list filters on (informational / crop-list items)
+NOTE_PREFIX = "提醒："
+NO_CROP_PREFIX = "圖表區塊 "
+NO_CROP_SUFFIX = " 還沒有裁切"
+
 # display names for the transcription flags a page can carry
 FLAG_LABELS = {
     "cut_off_text": "文字被裁切",
@@ -61,7 +66,7 @@ def page_reasons(p: dict) -> list[str]:
             if f == "multi_column":
                 # a reshoot can't fix a layout; the model reads both columns —
                 # this is only a check-the-reading-order note
-                reasons.append("提醒：多欄版面 — 請確認文字順序")
+                reasons.append(f"{NOTE_PREFIX}多欄版面 — 請確認文字順序")
             else:
                 reasons.append(f"標記：{FLAG_LABELS.get(f, f)}")
         if p.get("figure_quality"):
@@ -81,12 +86,12 @@ def page_reasons(p: dict) -> list[str]:
     for ri, r in enumerate(p.get("regions") or []):
         expected = f"figures/{p['id']}_{chr(97 + ri % 26)}.png"
         if not r.get("deleted") and expected not in figs:
-            reasons.append(f"圖表區塊 {ri} 還沒有裁切")
+            reasons.append(f"{NO_CROP_PREFIX}{ri}{NO_CROP_SUFFIX}")
             break
     if p["status"] == "suspect" and not reasons and not ignored:
-        reasons.append("weak capture (short cluster or low frame score)")
+        reasons.append("拍攝品質不佳（聚類過短或影格評分過低）")
     if p["status"] == "missing":
-        reasons.append("no usable frame captured")
+        reasons.append("未擷取到可用的影格")
     return reasons
 
 
@@ -171,8 +176,8 @@ def reshoot_list(ws: Workspace) -> list[dict]:
         # informational notes (multi-column etc.) don't justify a reshoot; the
         # 'no crop' note is handled by the crop list
         reasons = [r for r in page_reasons(p)
-                   if not r.startswith("note:")
-                   and not (r.startswith("figure region ") and "has no crop" in r)]
+                   if not r.startswith(NOTE_PREFIX)
+                   and not (r.startswith(NO_CROP_PREFIX) and r.endswith(NO_CROP_SUFFIX))]
         if reasons:
             items.append({"id": p["id"], "printed_number": p.get("printed_number"),
                           "reasons": reasons})
@@ -197,7 +202,7 @@ def generate_review(ws: Workspace, log=print) -> Path:
             **p,
             "image": image,
             "html": md_lib.markdown(md_text, extensions=["tables"]) if md_text
-                    else "<em>no transcription</em>",
+                    else "<em>無辨識結果</em>",
         })
 
     from .stages.transcribe import format_ranges
@@ -212,5 +217,5 @@ def generate_review(ws: Workspace, log=print) -> Path:
         missing=missing,
         missing_ranges=format_ranges(missing),
     ), encoding="utf-8")
-    log(f"review page: {out}")
+    log(f"校對審閱頁面：{out}")
     return out

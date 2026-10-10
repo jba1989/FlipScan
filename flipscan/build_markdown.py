@@ -31,7 +31,7 @@ def build_markdown_zip(ws: Workspace, out_path: Path,
                        log=print) -> Path:
     book_md = ws.work_file("book.md")
     if not book_md.exists():
-        raise RuntimeError("work/book.md missing — run the pipeline (assemble) first")
+        raise RuntimeError("找不到 work/book.md — 請先執行處理流程 (assemble)")
     text = book_md.read_text(encoding="utf-8")
 
     title = title or ws.manifest["book"].get("title") or ws.root.name
@@ -73,5 +73,5 @@ def build_markdown_zip(ws: Workspace, out_path: Path,
             if src.exists():
                 z.write(src, dest)
                 n_imgs += 1
-    log(f"markdown zip written: {out_path} ({md_name} + {n_imgs} images)")
+    log(f"markdown zip 已寫入：{out_path} ({md_name} + {n_imgs} 張圖片)")
     return out_path

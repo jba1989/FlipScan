@@ -197,7 +197,7 @@ def _normalize_inserted_titles(texts: list[str],
         styled = style(int(m.group(1)))
         if styled and f"# {title}" in texts[i]:
             texts[i] = texts[i].replace(f"# {title}", f"# {styled}", 1)
-            log(f"  chapter heading normalized to the book's own style: "
+            log(f"  章節標題已規格化為本書風格："
                 f"{title!r} -> {styled!r}")
 
 
@@ -234,7 +234,7 @@ def _insert_chapter_breaks(pages: list[dict], texts: list[str],
         synth.append((i, title))
         added += 1
     if added:
-        log(f"  adjusted {added} chapter openings from the printed contents page")
+        log(f"  已根據印刷目錄頁調整 {added} 個章節起點")
     _normalize_inserted_titles(texts, synth, log)
     return texts
 
@@ -396,14 +396,14 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
             missing.append(page["id"])
             texts.append("")  # keep a page boundary; content is simply absent
     if missing:
-        log(f"  WARNING: {len(missing)} pages have no transcription: {', '.join(missing)}")
+        log(f"  警告：有 {len(missing)} 個頁面沒有辨識結果：{', '.join(missing)}")
 
     book_meta = ws.manifest["book"]
     extra_refs = {_norm_line(s) for s in (book_meta.get("title"),
                                           book_meta.get("author")) if s}
     toc = parse_printed_toc(texts)
     if toc:
-        log(f"  printed contents page found: {len(toc)} entries")
+        log(f"  已找到印刷目錄頁：共有 {len(toc)} 個項目")
     texts = _strip_repeated_lines(texts, extra_refs=extra_refs)
     texts = _dedupe_headings(texts)
     texts = _insert_chapter_breaks(kept, texts, toc, log)
@@ -447,5 +447,5 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
     out = ws.work_file("book.md")
     out.write_text(book, encoding="utf-8")
     headings = sum(1 for ln in book.splitlines() if ln.startswith("# "))
-    log(f"  assembled {len(texts)} pages -> {out} ({headings} chapter headings)")
+    log(f"  已組合 {len(texts)} 個頁面 -> {out}（{headings} 個章節標題）")
     ws.stage_done("assemble", missing=missing)

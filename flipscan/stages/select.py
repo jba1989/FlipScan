@@ -100,8 +100,8 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
 
     ws.save()
     sheet = contact_sheet(ws)
-    log(f"  canonical frames chosen for {len(ws.manifest['pages'])} pages")
-    log(f"  contact sheet: {sheet}")
+    log(f"  已為 {len(ws.manifest['pages'])} 個頁面選取代表影格")
+    log(f"  聯絡印樣：{sheet}")
     ws.stage_done("select")
 
 
@@ -161,7 +161,7 @@ def split_spreads(ws: Workspace, cfg: dict, log=print) -> int:
         n += 1
     ws.manifest["pages"] = out
     if n:
-        log(f"  {n} two-page spreads split into left/right pages")
+        log(f"  已將 {n} 個跨頁分割為左/右頁面")
     return n
 
 

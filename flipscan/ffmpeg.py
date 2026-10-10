@@ -28,8 +28,8 @@ def _find(tool: str) -> str:
         if candidate.exists():
             return str(candidate)
     raise FFmpegNotFound(
-        f"{tool} not found. Install ffmpeg (winget install Gyan.FFmpeg / apt install ffmpeg) "
-        f"or set FLIPSCAN_{tool.upper()} to its path."
+        f"找不到 {tool}。請安裝 ffmpeg (winget install Gyan.FFmpeg / apt install ffmpeg) "
+        f"或將 FLIPSCAN_{tool.upper()} 設為其路徑。"
     )
 
 

@@ -477,7 +477,9 @@ function prettyJob(j) {
   const base = j.label || ({pipeline: "執行處理流程", "proof-chapter": "校對",
     "proof-resolve": "重新辨識段落", "proof-reread-stuck": "重新辨識卡住項目",
     "retry-ocr": "重試 OCR", "pdf-import": "PDF 匯入",
-    "video-import": "影片匯入"}[j.kind] || j.kind);
+    "video-import": "影片匯入", "epub-import": "EPUB 匯入", audiobook: "製作有聲書",
+    "cast-analysis": "分析角色", "tts-preview": "聲音預覽", "voice-gen": "產生聲音",
+    "voice-gen-all": "產生所有缺少的聲音"}[j.kind] || j.kind);
   // the queue is global (all books), so name the book
   return j.project ? `${j.project} · ${base}` : base;
 }
@@ -2016,7 +2018,7 @@ async function previewVoice(voice, character, btn) {
       + `&character=${encodeURIComponent(character || "")}`, {method: "POST"});
     const j = await waitForJob(job_id);
     const f = j.result?.file;
-    if (!f) throw new Error("沒有產生試聽");
+    if (!f) throw new Error("沒有產生預覽");
     let a = $("preview-audio");
     if (!a) {
       a = document.createElement("audio");
@@ -2029,7 +2031,7 @@ async function previewVoice(voice, character, btn) {
     }
     a.src = `/api/voice-previews/${encodeURIComponent(f)}`;
     a.play();
-  } catch (e) { alert("試聽失敗：" + e.message); }
+  } catch (e) { alert("預覽失敗：" + e.message); }
   if (btn) { btn.disabled = false; btn.textContent = orig; }
 }
 

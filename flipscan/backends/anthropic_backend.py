@@ -71,7 +71,7 @@ class AnthropicBackend(TranscriptionBackend):
             ))
 
         batch = self.client.messages.batches.create(requests=requests)
-        log(f"  anthropic: batch {batch.id} submitted ({len(requests)} pages)")
+        log(f"  anthropic: 批次 {batch.id} 已提交 ({len(requests)} 頁)")
 
         while True:
             batch = self.client.messages.batches.retrieve(batch.id)
@@ -93,9 +93,9 @@ class AnthropicBackend(TranscriptionBackend):
                 except TranscriptionError as e:
                     results[pid] = {"error": str(e)}
             else:
-                results[pid] = {"error": f"batch result: {result.result.type}"}
-        log(f"  anthropic: batch done, "
-            f"{sum(1 for r in results.values() if 'error' not in r)}/{len(pages)} ok")
+                results[pid] = {"error": f"批次結果：{result.result.type}"}
+        log(f"  anthropic: 批次完成，"
+            f"{sum(1 for r in results.values() if 'error' not in r)}/{len(pages)} 成功")
         return results
 
 

@@ -473,7 +473,7 @@ def assemble_m4b(ws: Workspace, wavs: list[tuple[str, Path]], out: Path,
     out.parent.mkdir(parents=True, exist_ok=True)
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0:
-        raise RuntimeError(f"ffmpeg m4b assembly failed: {r.stderr[-400:]}")
+        raise RuntimeError(f"ffmpeg m4b 組裝失敗：{r.stderr[-400:]}")
     log(f"  audiobook: {out.name} ({t / 3600:.1f} h"
         + (f" at {speed}x" if speed != 1.0 else "") + f", {len(wavs)} chapters)")
 
@@ -511,7 +511,7 @@ def build_audiobook(ws: Workspace, cfg: dict, out: Path,
     toward the eventual full build."""
     chs = narration_chapters(ws)
     if not chs:
-        raise RuntimeError("no narratable text — run the pipeline first")
+        raise RuntimeError("無可朗讀文字 — 請先執行處理流程")
     a = dict(cfg.get("audiobook", {}))
     voice = (voice if voice is not None
              else (a.get("voice_sample") or "")).strip()
@@ -525,14 +525,14 @@ def build_audiobook(ws: Workspace, cfg: dict, out: Path,
         from .casting import load_cast
         cast = load_cast(ws)
         if cast is None:
-            raise RuntimeError("no cast analysis — run Analyze characters first")
+            raise RuntimeError("尚未進行角色配音分析 — 請先執行 「分析角色」")
         for cname, c in (cast.get("characters") or {}).items():
             p = resolve_voice(ws, voices_dir, c.get("voice") or "")
             if p is not None:
                 voice_of[cname] = str(p)
-        log(f"  cast: {len(voice_of)} character(s) with voices — "
+        log(f"  角色配音：{len(voice_of)} 個角色已設定聲音 — "
             + (", ".join(f"{n} -> {Path(p).stem}" for n, p in voice_of.items())
-               or "none (all narrator)"))
+               or "無（全部為旁白）"))
 
     def chapter_quotes(i: int, title: str) -> list[dict]:
         rows = (cast or {}).get("chapters") or []
@@ -583,7 +583,7 @@ def build_audiobook(ws: Workspace, cfg: dict, out: Path,
             nseg = sum(1 for v, _ in (segments or []) if v)
             log(f"  [{i + 1}/{len(chs)}] {title[:46]!r}: "
                 f"synthesizing {len(text) / 1000:.1f}k chars"
-                + (f", {nseg} cast quote run(s)" if nseg else "") + "…")
+                + (f", {nseg} 段角色配音引文" if nseg else "") + "…")
             synthesize_chapter(engine, text, wav, log, should_cancel,
                                announce=title, segments=segments)
             sig.write_text(json.dumps({"key": key, "title": title}))

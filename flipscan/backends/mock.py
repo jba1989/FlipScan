@@ -35,5 +35,5 @@ class MockBackend(TranscriptionBackend):
                 "regions": [],
                 "flags": [],
             }
-        log(f"  mock: transcribed {len(pages)} pages (placeholder text)")
+        log(f"  mock: 已辨識 {len(pages)} 個頁面（佔位文字）")
         return results

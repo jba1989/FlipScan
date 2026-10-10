@@ -103,7 +103,7 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         ]
         if video.get("direction") == "reverse":
             seq.reverse()
-        log(f"  {vid}: {len(clusters)} page captures")
+        log(f"  {vid}：擷取到 {len(clusters)} 個頁面")
         entries.extend(seq)
 
     pages = []
@@ -144,10 +144,10 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
     detected = sum(1 for p in pages if not p.get("role"))
     if expected and detected != expected:
         warnings.append(
-            f"found {detected} pages so far, expected {expected} — duplicates "
-            f"collapse and order settles once transcription reads page numbers")
+            f"目前已找到 {detected} 個頁面，預期為 {expected} 個 — 等 transcription 讀取頁碼後，"
+            f"重複項將會合併且順序將會確立")
     for w in warnings:
         log(f"  WARNING: {w}")
     ws.stage_done("cluster", page_count=len(pages), warnings=warnings)
-    log(f"  {len(pages)} page captures total (duplicates merge after "
-        f"transcription via printed page numbers)")
+    log(f"  共擷取到 {len(pages)} 個頁面（transcribe 透過印刷頁碼辨識後，重複項將會"
+        f"合併）")

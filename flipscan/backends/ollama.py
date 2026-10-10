@@ -212,7 +212,7 @@ class OllamaBackend(TranscriptionBackend):
                                    cv2.IMREAD_COLOR)
                 res = self._recover_split(img) if img is not None else None
                 if res is not None:
-                    state = "recovered (split)"
+                    state = "已復原 (分割)"
                 else:                              # split failed too → salvage
                     res = salvage_result(last_raw)
                     state = "salvaged" if res else "FAILED"
@@ -238,7 +238,7 @@ class OllamaBackend(TranscriptionBackend):
                         split["flags"] = sorted(set(res.get("flags", []))
                                                 | set(split.get("flags", [])))
                         res = split
-                        state = "recovered (2-col split)"
-            results[page_id] = res or {"error": "no usable response from model"}
+                        state = "已復原 (雙欄分割)"
+            results[page_id] = res or {"error": "模型未回傳可用回應"}
             log(f"  ollama: {page_id} ({state}) [{i + 1}/{len(pages)}]")
         return results

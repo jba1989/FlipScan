@@ -43,7 +43,7 @@ def build_pdf_facsimile(ws: Workspace, out_path: Path, title: str | None = None,
     pages = [p for p in ws.manifest["pages"]
              if p.get("color") and p.get("status") not in ("duplicate", "deleted")]
     if not pages:
-        raise RuntimeError("no preprocessed pages — run the pipeline first")
+        raise RuntimeError("無前處理頁面 — 請先執行處理流程")
 
     c = canvas.Canvas(str(out_path))
     c.setTitle(title or ws.manifest["book"].get("title") or ws.root.name)
@@ -81,7 +81,7 @@ def build_pdf_facsimile(ws: Workspace, out_path: Path, title: str | None = None,
             c.drawText(text)
         c.showPage()
     c.save()
-    log(f"facsimile PDF written: {out_path} ({len(pages)} pages, searchable)")
+    log(f"facsimile PDF 已寫入：{out_path} ({len(pages)} 個頁面，可搜尋)")
     return out_path
 
 
@@ -123,7 +123,7 @@ def build_pdf_reflowed(ws: Workspace, out_path: Path, title: str | None = None,
 
     book_md = ws.work_file("book.md")
     if not book_md.exists():
-        raise RuntimeError("work/book.md missing — run the pipeline (assemble) first")
+        raise RuntimeError("找不到 work/book.md — 請先執行處理流程 (assemble)")
     text = book_md.read_text(encoding="utf-8")
 
     geo = PAGE_GEOMETRY_MM.get(device)
@@ -211,6 +211,6 @@ def build_pdf_reflowed(ws: Workspace, out_path: Path, title: str | None = None,
                             title=title or ws.manifest["book"].get("title")
                             or ws.root.name)
     doc.build(story)
-    log(f"reflowed PDF written: {out_path}"
+    log(f"重排 PDF 已寫入：{out_path}"
         + (f" ({device})" if geo else ""))
     return out_path
