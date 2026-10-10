@@ -33,6 +33,14 @@ def fake_which(monkeypatch):
     monkeypatch.setattr(cb.shutil, "which", lambda n: f"/usr/bin/{Path(n).name}")
 
 
+@pytest.fixture(autouse=True)
+def codex_logged_in(monkeypatch, tmp_path):
+    home = tmp_path / "codex-home"
+    home.mkdir()
+    (home / "auth.json").write_text("{}")
+    monkeypatch.setattr(cb, "codex_home", lambda: home)
+
+
 class Runner:
     """Stands in for subprocess.run; `script` is a list of outcomes per call:
     a str (stdout), an Exception to raise, or a CompletedProcess."""
@@ -260,3 +268,33 @@ def test_project_config_cannot_choose_the_executable(tmp_path, monkeypatch):
     p = config.load_config(book)["provider"]
     assert p["name"] == "codex"                 # choosing a provider is fine
     assert p["cli_path"] == "/usr/bin/claude"   # the global value survives
+
+
+def test_project_config_cannot_redirect_endpoints(tmp_path, monkeypatch):
+    """Redirecting a URL would ship the global API key (or every page image)
+    to whoever wrote the book folder's config.toml."""
+    from flipscan import config
+    monkeypatch.setattr(config, "global_config_path",
+                        lambda: tmp_path / "global.toml")
+    book = tmp_path / "book"
+    book.mkdir()
+    (book / "config.toml").write_text(
+        '[provider]\nopenai_base_url = "https://evil.example/v1"\n'
+        'ollama_url = "http://evil.example:11434"\n')
+    p = config.load_config(book)["provider"]
+    assert p["openai_base_url"] == config.DEFAULTS["provider"]["openai_base_url"]
+    assert p["ollama_url"] == config.DEFAULTS["provider"]["ollama_url"]
+
+
+def test_codex_runs_isolated_from_user_config(monkeypatch, tmp_path, img):
+    """codex gets its own CODEX_HOME so ~/.codex MCP servers / plugins never load."""
+    r = install(monkeypatch, [""])
+    get_backend(make_cfg("codex")).transcribe([("p1", img)], log=lambda m: None)
+    assert r.calls[0][1]["env"]["CODEX_HOME"] == str(cb.codex_home())
+
+
+def test_codex_without_its_own_login_fails_clearly(monkeypatch, tmp_path):
+    monkeypatch.setattr(cb, "codex_home", lambda: tmp_path / "empty")
+    monkeypatch.setattr(cb.shutil, "which", lambda x: "/bin/codex")
+    with pytest.raises(RuntimeError, match="codex login"):
+        get_backend(make_cfg("codex"))

@@ -73,6 +73,7 @@
  "[queue] 錯誤: {0}": "[queue] ERROR: {0}",
  "[{0}] 尚未實作，跳過": "[{0}] not implemented yet, skipping",
  "[{0}] 已完成，跳過": "[{0}] done, skipping",
+ "codex 需要獨立登入一次：請執行 CODEX_HOME={0} codex login": "codex needs its own one-time login: run CODEX_HOME={0} codex login",
  "facsimile PDF 已寫入：{0} ({1} 個頁面，可搜尋)": "facsimile PDF written: {0} ({1} pages, searchable)",
  "ffmpeg m4b 組裝失敗：{0}": "ffmpeg m4b assembly failed: {0}",
  "markdown zip 已寫入：{0} ({1} + {2} 張圖片)": "markdown zip written: {0} ({1} + {2} images)",

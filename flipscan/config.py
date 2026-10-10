@@ -122,8 +122,9 @@ def global_config_path() -> Path:
 
 
 # A book folder can come from someone else, so its config.toml must not be
-# able to name a program for us to execute.
-WORKSPACE_DENY = {"provider": ("cli_path",)}
+# able to name a program for us to execute, or redirect an endpoint (which
+# would ship the global API key and every page image to its author).
+WORKSPACE_DENY = {"provider": ("cli_path", "ollama_url", "openai_base_url")}
 
 
 def _untrusted(raw: dict[str, Any]) -> dict[str, Any]:
