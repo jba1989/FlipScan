@@ -389,3 +389,11 @@ def test_frontend_never_shadows_t(page):
     for script in _inline_scripts((STATIC / page).read_text(encoding="utf-8")):
         hits = [m.group(0) for m in binding.finditer(script)]
         assert not hits, hits
+
+
+@pytest.mark.parametrize("page", ["index.html", "reader.html"])
+def test_frontend_reports_language_to_server(page):
+    """Every page that calls the API must sync its language, or the server's
+    error details come back in whatever language it last heard."""
+    scripts = "".join(_inline_scripts((STATIC / page).read_text(encoding="utf-8")))
+    assert "I18N.reportToServer()" in scripts

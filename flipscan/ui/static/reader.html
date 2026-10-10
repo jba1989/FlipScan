@@ -82,6 +82,7 @@
 <script src="/static/vendor/epub.min.js"></script>
 <script>
 I18N.translateStatic();
+I18N.reportToServer();
 const params = new URLSearchParams(location.search);
 const project = params.get("project"), file = params.get("file");
 document.getElementById("back").href =
