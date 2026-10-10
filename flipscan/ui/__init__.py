@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
+from ..backends.cli_backend import EXECUTABLES
 from ..config import load_config, save_global_config
 from ..jobs import CANCELED, DONE, ERROR, JobQueue
 from ..jobs_handlers import concurrency_config, register_handlers
@@ -130,6 +132,10 @@ class CropEdit(BaseModel):
 
 class KeepBest(BaseModel):
     items: list[dict]  # [{page_id, fig_idx}, ...] — duplicates of one figure
+
+
+CLI_SETTING_KEYS = ("cli_model", "cli_timeout", "cli_concurrency",
+                    "cli_retries", "cli_path")
 
 
 class Language(BaseModel):
@@ -566,6 +572,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                                        or os.environ.get("OPENAI_API_KEY")
                                        or os.environ.get("FLIPSCAN_OPENAI_API_KEY")),
             "escalate_to": p.get("escalate_to", "anthropic"),
+            # which subscription CLIs are installed (the UI warns when not)
+            "cli_available": {
+                name: bool(shutil.which(p.get("cli_path") or exe))
+                for name, exe in EXECUTABLES.items()},
         }
 
     @app.put("/api/settings")
@@ -598,6 +608,8 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             "openai_model": s.openai_model or current.get("openai_model", "gpt-4o"),
             "openai_api_key": s.openai_api_key or current.get("openai_api_key", ""),
             "escalate_to": s.escalate_to or current.get("escalate_to", "anthropic"),
+            # not editable here, but the file is rewritten whole — carry through
+            **{k: current[k] for k in CLI_SETTING_KEYS if k in current},
         }})
         return {"ok": True}
 

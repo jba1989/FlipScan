@@ -346,12 +346,13 @@ async function showSettings() {
   current = null;
   closeNav();
   const s = await api("/settings");
+  const noCli = Object.keys(s.cli_available || {}).filter(k => !s.cli_available[k]);
   $("main").innerHTML = T`
   <div class="card">
     <h2>設定 <span class="meta">（套用至所有專案）</span></h2>
     <label>辨識服務提供者</label>
     <select id="set-provider">
-      ${["ollama","anthropic","openai","hybrid","mock"].map(p =>
+      ${["ollama","anthropic","openai","codex","claude_cli","agy","hybrid","mock"].map(p =>
         `<option ${p === s.provider ? "selected" : ""}>${p}</option>`).join("")}
     </select>
     <div class="meta" style="margin:.2rem 0 .6rem"><b>openai</b> = 任何相容 OpenAI 的視覺 API（OpenAI、Google Gemini、OpenRouter、Groq、本地 vLLM/LM Studio）— 請在下方設定。</div>
@@ -396,7 +397,7 @@ async function showSettings() {
     <div class="meta" style="margin:.3rem 0 .6rem">⚠ openai 服務提供者會將每一頁的圖片傳送至該服務（與本地端 Ollama 不同）。</div>
     <label>當 hybrid 升級時，將低信心度頁面傳送至</label>
     <select id="set-escto" style="width:auto">
-      ${["anthropic","openai"].map(v =>
+      ${["anthropic","openai","codex","claude_cli","agy"].map(v =>
         `<option ${v === s.escalate_to ? "selected" : ""}>${v}</option>`).join("")}
     </select>
     <div class="meta" style="margin:.6rem 0">儲存於本機專案資料夾中的
@@ -404,6 +405,9 @@ async function showSettings() {
     <button onclick="saveSettings()">儲存設定</button>
     <span class="meta" id="settings-status" style="margin-left:.6rem"></span>
   </div>`;
+  $("set-escto").insertAdjacentHTML("afterend",
+    `<div class="meta" style="margin:.3rem 0 .6rem">${t("⚠ codex / claude_cli / agy 會使用本機已登入的訂閱 CLI：頁面圖片會傳送至該服務，並消耗訂閱額度。")}${
+      noCli.length ? " " + t("找不到指令：") + noCli.join(", ") : ""}</div>`);
   testOllama();
 }
 async function testOllama() {
@@ -769,7 +773,7 @@ async function openProject(name, tab) {
         ${p.running ? t("執行中…") : t("執行 / 繼續")}</button>
       <select id="provider" style="width:auto">
         <option value="">服務提供者：設定預設</option>
-        <option>ollama</option><option>anthropic</option><option>hybrid</option><option>mock</option>
+        <option>ollama</option><option>anthropic</option><option>codex</option><option>claude_cli</option><option>agy</option><option>hybrid</option><option>mock</option>
       </select>
       <span class="meta">${p.videos.length} 部影片 · ${p.pages.length} 頁 ·
         ${p.pages.filter(x => x.status === "suspect").length} 頁可疑</span>

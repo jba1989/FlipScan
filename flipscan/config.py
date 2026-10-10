@@ -10,7 +10,7 @@ from .i18n import tr
 
 DEFAULTS: dict[str, Any] = {
     "provider": {
-        "name": "ollama",  # ollama | anthropic | openai | hybrid
+        "name": "ollama",  # ollama | anthropic | openai | codex | claude_cli | agy | hybrid
         "ollama_url": "http://localhost:11434",
         "ollama_model": "gemma4",
         "ollama_num_predict": 4096,
@@ -28,7 +28,14 @@ DEFAULTS: dict[str, Any] = {
         "ollama_concurrency": 1,
         # hybrid: escalate to this provider when a local result matches escalate_on
         "escalate_on": ["low_confidence", "malformed_json", "flags"],
-        "escalate_to": "anthropic",  # anthropic | openai
+        "escalate_to": "anthropic",  # anthropic | openai | codex | claude_cli | agy
+        # local subscription CLIs (codex / claude_cli / agy): images go to the
+        # vendor's cloud and each page spends subscription quota
+        "cli_model": "",       # empty = the tool's own default model
+        "cli_timeout": 300,    # seconds per call
+        "cli_concurrency": 1,
+        "cli_retries": 2,      # extra attempts after a timeout / failure
+        "cli_path": "",        # override the executable (default: found on PATH)
     },
     "extract": {
         "jpeg_quality": 2,  # ffmpeg -qscale:v
