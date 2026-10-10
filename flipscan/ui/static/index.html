@@ -347,6 +347,30 @@ function providerLabel(p) {
   return {codex: t("codex — ChatGPT 訂閱"), claude_cli: t("claude_cli — Claude 訂閱"),
           agy: t("agy — Antigravity 訂閱")}[p] || p;
 }
+// "tool · model" a run with provider `p` would actually use, from the settings
+function providerUses(p, s) {
+  const model = {ollama: s.ollama_model, anthropic: s.anthropic_model,
+                 openai: s.openai_model, codex: s.codex_model,
+                 claude_cli: s.claude_cli_model, agy: s.agy_model}[p];
+  if (p === "hybrid")
+    return `hybrid · ollama ${s.ollama_model} → ${t("升級")} ${providerUses(s.escalate_to, s)}`;
+  if (p === "mock") return t("mock（測試用，不辨識）");
+  return providerLabel(p) + (model ? ` · ${model}` : "");
+}
+
+// the project page's run-with picker: every option names its tool + model,
+// and the default one says which provider the settings resolve it to
+async function fillProviderPicker() {
+  const sel = $("provider");
+  let s;
+  try { s = await api("/settings"); } catch { return; }
+  if (!sel) return;
+  const opt = (v, text) => `<option value="${v}">${esc(text)}</option>`;
+  sel.innerHTML = opt("", t("設定預設：") + providerUses(s.provider, s))
+    + ["ollama", "anthropic", "openai", "codex", "claude_cli", "agy", "hybrid", "mock"]
+        .map(p => opt(p, providerUses(p, s))).join("");
+}
+
 const providerOption = (p, sel) =>
   `<option value="${p}" ${p === sel ? "selected" : ""}>${providerLabel(p)}</option>`;
 
@@ -853,10 +877,7 @@ async function openProject(name, tab) {
     <div class="row">
       <button id="runbtn" onclick="runPipeline()" ${p.running ? "disabled" : ""}>
         ${p.running ? t("執行中…") : t("執行 / 繼續")}</button>
-      <select id="provider" style="width:auto">
-        <option value="">服務提供者：設定預設</option>
-        <option>ollama</option><option>anthropic</option><option value="codex">codex — ChatGPT 訂閱</option><option value="claude_cli">claude_cli — Claude 訂閱</option><option value="agy">agy — Antigravity 訂閱</option><option>hybrid</option><option>mock</option>
-      </select>
+      <select id="provider" style="width:auto"></select>
       <span class="meta">${p.videos.length} 部影片 · ${p.pages.length} 頁 ·
         ${p.pages.filter(x => x.status === "suspect").length} 頁可疑</span>
     </div>
@@ -872,6 +893,7 @@ async function openProject(name, tab) {
         onclick="openProject('${name}','${k}')">${TAB_LABELS[k] || k}</div>`).join("")}
   </div>
   <div id="tabbody"></div>`;
+  fillProviderPicker();
   if (p.running) attachEvents(name);
   startProgress(name);
   startJobsPolling();
