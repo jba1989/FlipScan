@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 
 from flipscan import keystone, workres
+from flipscan.warpchain import Chain
 
 
 def _page(w=900, h=1200):
@@ -22,10 +23,23 @@ def _warp(img, dst):
     return cv2.warpPerspective(img, m, (w, h), borderValue=(90, 110, 130))
 
 
-def _mean_lean(img):
-    """Length-weighted lean (degrees) of the long near-vertical segments."""
-    gray, _ = workres.work_gray(img)
-    seg = keystone._drop_fill_edges(keystone.vertical_segments(gray), gray)
+def _corrected(img):
+    """correct_keystone through the chain, keeping the validity mask."""
+    chain = Chain.identity(img)
+    preview, valid, scale = chain.preview(img)
+    found = keystone.keystone_step(preview, valid, scale, chain.size)
+    assert found is not None
+    return chain.then(*found).render(img)
+
+
+def _mean_lean(img, valid=None):
+    """Length-weighted lean (degrees) of the long near-vertical segments,
+    ignoring the padding a warp exposed."""
+    gray, scale = workres.work_gray(img)
+    seg = keystone.vertical_segments(gray)
+    if valid is not None:
+        small = cv2.resize(valid.astype(np.uint8), gray.shape[::-1]) > 0
+        seg = keystone.drop_padding_edges(seg, small)
     assert len(seg), "no verticals found"
     d = seg[:, 2:] - seg[:, :2]
     length = np.hypot(d[:, 0], d[:, 1])
@@ -37,15 +51,13 @@ def test_trapezoid_is_squared():
     # camera tilted toward the top: the top edge shrinks inward
     page = _warp(_page(), [[90, 0], [810, 0], [900, 1200], [0, 1200]])
     assert _mean_lean(page) > 2.0
-    out = keystone.correct_keystone(page)
-    assert out is not page
-    assert _mean_lean(out) < 0.5
+    assert keystone.correct_keystone(page) is not page
+    assert _mean_lean(*_corrected(page)) < 0.5
 
 
 def test_sheared_page_is_uprighted():
     page = _warp(_page(), [[60, 0], [960, 0], [900, 1200], [0, 1200]])
-    out = keystone.correct_keystone(page)
-    assert _mean_lean(out) < 0.5
+    assert _mean_lean(*_corrected(page)) < 0.5
 
 
 def test_square_page_is_untouched():
@@ -58,6 +70,23 @@ def test_page_without_verticals_is_untouched():
     for y in range(200, 1000, 40):
         cv2.rectangle(page, (160, y), (740, y + 16), (60, 60, 60), -1)
     assert keystone.correct_keystone(page) is page
+
+
+def test_padding_edge_is_not_a_vertical():
+    # rotating exposes canvas padding whose border is a long straight edge
+    # leaning exactly by the rotation — with the validity mask it must not
+    # vote; the page itself has no verticals, so there is nothing to fix
+    from flipscan.rectify import rotation_step
+    page = np.full((1200, 900, 3), 120, np.uint8)  # mid-grey: padding contrasts
+    for y in range(200, 1000, 40):
+        cv2.rectangle(page, (160, y), (740, y + 16), (30, 30, 30), -1)
+    base = Chain.identity(page)
+    chain = base.then(*rotation_step(6.0, base.size))
+    preview, valid, scale = chain.preview(page)
+    seg = keystone.vertical_segments(cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY))
+    assert len(seg) > 0                            # the padding edges are seen...
+    assert len(keystone.drop_padding_edges(seg, valid)) == 0   # ...and dropped
+    assert keystone.keystone_step(preview, valid, scale, chain.size) is None
 
 
 def test_implausible_correction_is_refused():

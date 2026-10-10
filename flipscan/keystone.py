@@ -8,7 +8,8 @@ one homography sends it to infinity — verticals become parallel and upright,
 horizontals stay horizontal, and the foreshortened rows regain their height.
 
 Gated like the rest of the straightening: too little or too narrow evidence,
-or an implausibly strong correction, leaves the image untouched.
+or an implausibly strong correction, leaves the image untouched. Like every
+pass it only estimates a warpchain step; the resample happens once.
 """
 
 from __future__ import annotations
@@ -16,7 +17,8 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from .workres import PAPER, paper_fill, work_gray
+from .warpchain import Chain, Homography, Size
+from .workres import work_gray
 
 MAX_LEAN_DEG = 15.0        # segments leaning further are not page verticals
 MIN_SEGMENT = 0.08         # of page height
@@ -42,19 +44,15 @@ def vertical_segments(gray: np.ndarray) -> np.ndarray:
     return seg[keep]
 
 
-def _drop_fill_edges(seg: np.ndarray, gray: np.ndarray) -> np.ndarray:
-    """Discard segments on the boundary of the pure-white fill that earlier
-    rotation / remap steps padded in: those edges are straight, long, and
-    lean by exactly the deskew angle — perfect fake verticals."""
-    fill = (gray >= PAPER - 1).astype(np.uint8)
-    edge = np.r_[fill[0], fill[-1], fill[:, 0], fill[:, -1]]
-    if not len(seg) or not edge.any():
-        return seg                                     # nothing was padded in
-    _n, lab = cv2.connectedComponents(fill)
-    border = np.unique(np.r_[lab[0], lab[-1], lab[:, 0], lab[:, -1]])
-    pad = np.isin(lab, border[border > 0]).astype(np.uint8)
-    pad = cv2.dilate(pad, np.ones((9, 9), np.uint8))
-    h, w = gray.shape
+def drop_padding_edges(seg: np.ndarray, valid: np.ndarray) -> np.ndarray:
+    """Discard segments along the edge of the padding that earlier steps
+    exposed (rotation canvas, an outline quad past the frame): those edges
+    are straight, long, and lean by exactly the previous step's angle —
+    perfect fake verticals. `valid` marks pixels that came from the frame."""
+    if not len(seg) or valid.all():
+        return seg
+    pad = cv2.dilate((~valid).astype(np.uint8), np.ones((9, 9), np.uint8))
+    h, w = valid.shape
     ts = np.linspace(0.1, 0.9, 9)[None, :]
     xs = np.clip((seg[:, [0]] + ts * (seg[:, [2]] - seg[:, [0]])).astype(int), 0, w - 1)
     ys = np.clip((seg[:, [1]] + ts * (seg[:, [3]] - seg[:, [1]])).astype(int), 0, h - 1)
@@ -137,23 +135,25 @@ def shear_homography(seg: np.ndarray, h: int) -> np.ndarray | None:
     return np.array([[1.0, -median, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
 
 
-def correct_keystone(color: np.ndarray) -> np.ndarray:
-    """Upright the page's verticals; the input is returned untouched unless
-    the vanishing point is well supported and the correction plausible."""
-    gray, scale = work_gray(color)
+def keystone_step(preview: np.ndarray, valid: np.ndarray, scale: float,
+                  size: Size) -> tuple[Homography, Size] | None:
+    """Step that uprights the page's verticals, estimated on a preview
+    rendered at `scale` of a page of `size`; None unless the vanishing point
+    is well supported and the correction plausible."""
+    gray, _ = work_gray(preview)
     sh, sw = gray.shape
-    seg = _drop_fill_edges(vertical_segments(gray), gray)
+    seg = drop_padding_edges(vertical_segments(gray), valid)
     vp = vanishing_point(seg, sw, sh)
     hc = keystone_homography(vp, sh) if vp is not None else None
     if hc is None:
         hc = shear_homography(seg, sh)
     if hc is None:
-        return color
+        return None
     shear, persp = hc[0, 1], hc[2, 1]
     if abs(shear) < 0.005 and abs(persp * sh) < 0.01:
-        return color                                   # already square
+        return None                                    # already square
 
-    h, w = color.shape[:2]
+    w, h = size
     to_c = np.array([[scale, 0, -sw / 2], [0, scale, -sh / 2], [0, 0, 1.0]])
     m = np.linalg.inv(to_c) @ hc @ to_c                # full-res pixel coords
     corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], np.float64).reshape(-1, 1, 2)
@@ -162,6 +162,14 @@ def correct_keystone(color: np.ndarray) -> np.ndarray:
     x1, y1 = out.max(axis=0)
     fit = min(1.0, np.sqrt((w * h) / max((x1 - x0) * (y1 - y0), 1.0)) * 1.15)
     place = np.array([[fit, 0, -x0 * fit], [0, fit, -y0 * fit], [0, 0, 1.0]])
-    size = (int(round((x1 - x0) * fit)), int(round((y1 - y0) * fit)))
-    return cv2.warpPerspective(color, place @ m, size, flags=cv2.INTER_CUBIC,
-                               borderMode=cv2.BORDER_CONSTANT, borderValue=paper_fill(color))
+    out_size = (int(round((x1 - x0) * fit)), int(round((y1 - y0) * fit)))
+    return Homography(place @ m), out_size
+
+
+def correct_keystone(color: np.ndarray) -> np.ndarray:
+    """keystone_step applied to a ready page image (the input itself comes
+    back when there is nothing to fix)."""
+    chain = Chain.identity(color)
+    preview, valid, scale = chain.preview(color)
+    found = keystone_step(preview, valid, scale, chain.size)
+    return chain.then(*found).render(color)[0] if found else color

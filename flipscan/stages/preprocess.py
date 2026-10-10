@@ -6,8 +6,10 @@ Per page writes into work/pages/:
 
 Handles per-video 180-degree rotation (video shot upside down) and pads the
 page quad so edge content (printed page numbers!) survives the crop.
-Every machine crop is then straightened from its own text lines (rectify.py:
-deskew + curl/keystone flattening; [preprocess] straighten=false turns it off).
+Every machine crop is then straightened from its own content (rectify.py:
+deskew, text-line curl flattening, keystone; [preprocess] straighten=false
+turns it off). Crop and straightening are composed into one warpchain.Chain
+and the frame is resampled exactly once.
 Set config [preprocess] dewarp=true to apply simple cylindrical curl correction.
 """
 
@@ -18,7 +20,8 @@ import numpy as np
 
 from ..imaging import (detect_page_quad, find_flat_page, isolate_book,
                        mask_outside, order_quad, tighten_to_text)
-from ..rectify import straighten
+from ..rectify import straighten_warp
+from ..warpchain import Chain, Homography, Size, translation
 from ..workres import ink_mask
 from ..workspace import Workspace
 from .score import scores_by_frame_id
@@ -42,9 +45,10 @@ def _pad_quad(quad: np.ndarray, pad: float) -> np.ndarray:
     return np.clip(center + (quad - center) * (1.0 + 2.0 * pad), 0.0, 1.0)
 
 
-def correct_page(bgr: np.ndarray, quad_norm) -> np.ndarray:
-    """Perspective-correct the page quad to an upright rectangle."""
-    h, w = bgr.shape[:2]
+def page_step(shape: tuple[int, ...], quad_norm) -> tuple[Homography, Size] | None:
+    """The perspective step taking the page quad to an upright rectangle,
+    or None when the quad is too small to be a page."""
+    h, w = shape[:2]
     quad = np.array(quad_norm, dtype=np.float64) * [w, h]
     top = np.linalg.norm(quad[1] - quad[0])
     bottom = np.linalg.norm(quad[2] - quad[3])
@@ -53,10 +57,18 @@ def correct_page(bgr: np.ndarray, quad_norm) -> np.ndarray:
     tw = int(round((top + bottom) / 2))
     th = int(round((left + right) / 2))
     if tw < 50 or th < 50:
-        return bgr
+        return None
     dst = np.array([[0, 0], [tw - 1, 0], [tw - 1, th - 1], [0, th - 1]], dtype=np.float64)
     m = cv2.getPerspectiveTransform(quad.astype(np.float32), dst.astype(np.float32))
-    return cv2.warpPerspective(bgr, m, (tw, th))
+    return Homography(m.astype(np.float64)), (tw, th)
+
+
+def correct_page(bgr: np.ndarray, quad_norm) -> np.ndarray:
+    """Perspective-correct the page quad to an upright rectangle."""
+    step = page_step(bgr.shape, quad_norm)
+    if step is None:
+        return bgr
+    return cv2.warpPerspective(bgr, step[0].forward, step[1])
 
 
 def dewarp_cylindrical(color: np.ndarray) -> np.ndarray:
@@ -96,10 +108,6 @@ def dewarp_cylindrical(color: np.ndarray) -> np.ndarray:
     map_x = np.broadcast_to(col_x[None, :], (h, w)).copy()
     return cv2.remap(color, map_x, map_y.astype(np.float32), cv2.INTER_LINEAR,
                      borderMode=cv2.BORDER_REPLICATE)
-
-
-def _straighten(color: np.ndarray, cfg: dict) -> np.ndarray:
-    return straighten(color) if cfg["preprocess"].get("straighten", True) else color
 
 
 def llm_copy(color: np.ndarray, long_edge: int) -> np.ndarray:
@@ -165,31 +173,47 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
     if rotation == 180:
         bgr = cv2.rotate(bgr, cv2.ROTATE_180)
 
-    # one half of a split two-page spread (select decided): warp exactly that
-    # page's quad, then trim stacked pages / desk wedges to its text block
+    src, chain, isolated = _base_chain(bgr, page, cfg, scores, rotation, pad)
+    chain = chain.clipped()                            # the crop is the page
+    if chain.steps and cfg["preprocess"].get("straighten", True):
+        chain = straighten_warp(src, chain)            # whole-frame fallback: as-is
+    color, valid = chain.render(src)                   # the one resample
     if page.get("spread_quad"):
-        quad = _pad_quad(np.array(page["spread_quad"], dtype=np.float64), pad)
-        color = tighten_to_text(_straighten(correct_page(bgr, quad), cfg),
-                                page.get("side"))
-        if cfg["preprocess"].get("dewarp"):
-            color = dewarp_cylindrical(color)
-        _write_page_images(ws, page, color, cfg)
+        # trim stacked pages / desk wedges, measured from the real content
+        # edge rather than the padding a warp exposed
+        cols = np.flatnonzero(valid.mean(axis=0) > 0.5)
+        extent = (int(cols[0]), int(cols[-1])) if len(cols) else None
+        color = tighten_to_text(color, page.get("side"), extent)
+    if cfg["preprocess"].get("dewarp"):
+        color = dewarp_cylindrical(color)
+    _write_page_images(ws, page, color, cfg)
+    if isolated:
+        page["isolated"] = True
+    else:
         page.pop("isolated", None)
-        return
+
+
+def _quad_chain(chain: Chain, bgr: np.ndarray, quad_norm, pad: float) -> Chain:
+    step = page_step(bgr.shape, _pad_quad(np.array(quad_norm, dtype=np.float64), pad))
+    return chain.then(*step) if step else chain
+
+
+def _base_chain(bgr: np.ndarray, page: dict, cfg: dict, scores: dict | None,
+                rotation: int, pad: float) -> tuple[np.ndarray, Chain, bool]:
+    """(source, crop chain, isolated): where on the frame this page lies, as
+    a transform — nothing is resampled yet."""
+    ident = Chain.identity(bgr)
+    # one half of a split two-page spread (select decided): exactly that quad
+    if page.get("spread_quad"):
+        return bgr, _quad_chain(ident, bgr, page["spread_quad"], pad), False
 
     # edge-density page isolation: crop straight to the flat readable page
     # (lighting-invariant; falls back to the quad path when not confident)
-    if (cfg["preprocess"].get("isolate_page", True)
-            and not page.get("patched_source") and page.get("role") != "cover"):
+    if cfg["preprocess"].get("isolate_page", True) and page.get("role") != "cover":
         box = find_flat_page(bgr)
         if box is not None:
-            color = _straighten(bgr[box[1]:box[3], box[0]:box[2]], cfg)
-            if cfg["preprocess"].get("dewarp"):
-                color = dewarp_cylindrical(color)
-            _write_page_images(ws, page, color, cfg)
-            page["isolated"] = True
-            return
-    page.pop("isolated", None)
+            x0, y0, x1, y1 = box
+            return bgr, ident.then(translation(x0, y0), (x1 - x0, y1 - y0)), True
 
     quad = None
     if cfg["preprocess"].get("mask_clutter", False):  # experimental: needs even lighting
@@ -199,23 +223,18 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
         book_mask, book_quad, _spine = isolate_book(bgr)
         if book_quad is not None:
             bgr = mask_outside(bgr, book_mask)
+            ident = Chain.identity(bgr)
             quad = book_quad
+    fid = page.get("canonical")
     if quad is None and fid is not None and scores and fid in scores:
         quad = scores[fid].get("quad")
         if quad is not None and rotation == 180:
             quad = order_quad(1.0 - np.array(quad, dtype=np.float64))
     if quad is None:  # patched photos have no score record: detect now
-        q, _ = detect_page_quad(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY))
-        quad = q if q is not None else None
-
-    if quad is not None:
-        quad = _pad_quad(np.array(quad, dtype=np.float64), pad)
-        color = _straighten(correct_page(bgr, quad), cfg)
-    else:
-        color = bgr
-    if cfg["preprocess"].get("dewarp"):
-        color = dewarp_cylindrical(color)
-    _write_page_images(ws, page, color, cfg)
+        quad, _ = detect_page_quad(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY))
+    if quad is None:
+        return bgr, ident, False
+    return bgr, _quad_chain(ident, bgr, quad, pad), False
 
 
 def _orientation_sample(ws: Workspace, cfg: dict, video: dict,
