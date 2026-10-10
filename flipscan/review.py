@@ -10,6 +10,16 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from .workspace import Workspace
 
 
+# display names for the transcription flags a page can carry
+FLAG_LABELS = {
+    "cut_off_text": "文字被裁切",
+    "blur": "模糊",
+    "multi_column": "多欄版面",
+    "handwriting": "手寫字",
+    "truncated": "輸出被截斷",
+    "prompt_echo": "模型背出了指令（已自動截除）",
+}
+
 def find_page_by_text(ws: Workspace, snippet: str) -> dict | None:
     """Map a passage of assembled/rendered text back to its source page.
     Squashing to lowercase alphanumerics makes the match survive hyphenation,
@@ -43,35 +53,35 @@ def page_reasons(p: dict) -> list[str]:
     ignored = bool(p.get("suspect_ignored"))
     reasons = []
     if p.get("transcribe_error"):
-        reasons.append(f"transcription failed ({p['transcribe_error'][:80]})")
+        reasons.append(f"文字辨識失敗（{p['transcribe_error'][:80]}）")
     if not ignored:
         if p.get("confidence") == "low":
-            reasons.append("low transcription confidence")
+            reasons.append("辨識信心度低")
         for f in p.get("flags") or []:
             if f == "multi_column":
                 # a reshoot can't fix a layout; the model reads both columns —
                 # this is only a check-the-reading-order note
-                reasons.append("note: multi-column layout — verify text order")
+                reasons.append("提醒：多欄版面 — 請確認文字順序")
             else:
-                reasons.append(f"flagged: {f}")
+                reasons.append(f"標記：{FLAG_LABELS.get(f, f)}")
         if p.get("figure_quality"):
-            reasons.append("figure source frame is low quality")
+            reasons.append("圖表來源影格品質不佳")
     if p.get("needs_reshoot"):
-        note = f" — “{p['flag_note']}”" if p.get("flag_note") else ""
-        reasons.append(f"marked for re-acquisition by you{note}")
+        note = f" — 「{p['flag_note']}」" if p.get("flag_note") else ""
+        reasons.append(f"你已標記為需要重拍{note}")
     if any(r.get("needs_reshoot") for r in p.get("regions") or []):
-        reasons.append("figure marked for re-acquisition (shoot it close-up)")
+        reasons.append("圖表已標記為需要重拍（請近拍）")
     if any(r.get("stale_crop") for r in p.get("regions") or []):
-        reasons.append("figure crop was drawn on an older page image — re-crop it")
+        reasons.append("圖表裁切框是在舊的頁面影像上畫的 — 請重新裁切")
     if p.get("number_rejected"):
-        reasons.append("page number misread (broke the page order)")
+        reasons.append("頁碼辨識錯誤（打亂了頁面順序）")
     if p.get("number_conflict"):
-        reasons.append("more captures than page numbers fit here")
+        reasons.append("拍攝畫面比這裡能放的頁碼還多")
     figs = p.get("figures") or []
     for ri, r in enumerate(p.get("regions") or []):
         expected = f"figures/{p['id']}_{chr(97 + ri % 26)}.png"
         if not r.get("deleted") and expected not in figs:
-            reasons.append(f"figure region {ri} has no crop")
+            reasons.append(f"圖表區塊 {ri} 還沒有裁切")
             break
     if p["status"] == "suspect" and not reasons and not ignored:
         reasons.append("weak capture (short cluster or low frame score)")

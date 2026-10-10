@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>FlipScan reader</title>
+<title>FlipScan 閱讀器</title>
 <style>
   * { box-sizing: border-box; }
   /* dvh tracks the browser chrome (URL bar) on phones — 100vh flows under it */
@@ -49,28 +49,28 @@
 </head>
 <body>
 <header>
-  <a href="#" id="back">← back</a>
-  <div class="title" id="title">loading…</div>
-  <select id="toc" title="table of contents"><option>contents…</option></select>
-  <select id="device" title="read comfortably, or simulate a device's screen">
-    <option value="none">comfortable</option>
+  <a href="#" id="back">← 返回</a>
+  <div class="title" id="title">載入中…</div>
+  <select id="toc" title="目錄"><option>目錄…</option></select>
+  <select id="device" title="舒適閱讀，或模擬裝置螢幕">
+    <option value="none">舒適</option>
     <option value="remarkable-2">reMarkable 2</option>
-    <option value="eink-6in">6″ e-ink</option>
+    <option value="eink-6in">6″ 電子紙</option>
     <option value="xteink-x3">Xteink X3</option>
-    <option value="tablet">tablet</option>
+    <option value="tablet">平板</option>
   </select>
-  <button id="theme" title="light / dark">🌗</button>
-  <button id="font-minus" title="smaller text">A−</button>
-  <button id="font-plus" title="larger text">A+</button>
-  <button id="flag" title="something is wrong with this page of the book —
-flag it for the reshoot list">⚑ flag</button>
+  <button id="theme" title="淺色 / 深色">🌗</button>
+  <button id="font-minus" title="縮小文字">A−</button>
+  <button id="font-plus" title="放大文字">A+</button>
+  <button id="flag" title="本書此頁面有問題 —
+標記至重拍清單">⚑ 標記</button>
 </header>
 <div id="stage">
   <div id="frame">
     <div id="viewer">
-      <div id="loading">loading book…</div>
-      <button class="pgbtn" id="pg-prev" title="previous page">‹</button>
-      <button class="pgbtn" id="pg-next" title="next page">›</button>
+      <div id="loading">載入書籍中…</div>
+      <button class="pgbtn" id="pg-prev" title="上一頁">‹</button>
+      <button class="pgbtn" id="pg-next" title="下一頁">›</button>
     </div>
   </div>
 </div>
@@ -84,7 +84,7 @@ const project = params.get("project"), file = params.get("file");
 document.getElementById("back").href =
   "/#" + encodeURIComponent(project || "") + "/pipeline";
 if (!project || !file) {
-  document.getElementById("loading").textContent = "missing ?project= and ?file=";
+  document.getElementById("loading").textContent = "缺少 ?project= 與 ?file=";
   throw new Error("bad params");
 }
 document.getElementById("title").textContent = file;
@@ -177,7 +177,7 @@ book.loaded.metadata.then(m => {
 });
 book.loaded.navigation.then(nav => {
   const sel = document.getElementById("toc");
-  sel.innerHTML = '<option value="">contents…</option>' + nav.toc.map(i =>
+  sel.innerHTML = '<option value="">目錄…</option>' + nav.toc.map(i =>
     `<option value="${i.href}">${i.label.trim()}</option>`).join("");
   sel.onchange = () => sel.value && rendition.display(sel.value);
 });
@@ -193,7 +193,7 @@ function updatePos(loc) {
   const pct = book.locations.length()
     ? Math.round(book.locations.percentageFromCfi(loc.start.cfi) * 100) : null;
   document.getElementById("pos").textContent =
-    (pct == null ? "" : pct + "% — ") + "tap ‹ › or the page edges to turn";
+    (pct == null ? "" : pct + "% — ") + "點擊 ‹ › 或頁面邊緣以翻頁";
   const sel = document.getElementById("toc");
   if (loc.start.href && sel.options.length) {
     for (const o of sel.options)
@@ -271,7 +271,7 @@ rendition.hooks.content.register(contents => {
       b.addEventListener("click", (e) => { e.preventDefault(); fn(b); });
       bar.appendChild(b);
     };
-    mkBtn("✂ re-crop", () => {
+    mkBtn("✂ 重新裁切", () => {
       // hand off to the main app's crop tool on this figure — navigate this
       // tab (window.open gets eaten by mobile popup blockers); the reader
       // remembers its position so coming back is free
@@ -279,14 +279,14 @@ rendition.hooks.content.register(contents => {
         JSON.stringify({project, pageId: pid, figIdx: idx}));
       window.top.location.assign("/#" + encodeURIComponent(project) + "/pages");
     });
-    mkBtn("📷 re-capture", async (b) => {
+    mkBtn("📷 補拍", async (b) => {
       try {
         const r = await fetch(`/api/projects/${encodeURIComponent(project)}` +
           `/pages/${pid}/figures/${idx}/reshoot`, {method: "POST"});
         if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-        b.textContent = "✓ queued for re-capture";
+        b.textContent = "✓ 已加入補拍佇列";
         b.disabled = true;
-      } catch (e) { alert("failed: " + e.message); }
+      } catch (e) { alert("失敗：" + e.message); }
     });
     img.insertAdjacentElement("afterend", bar);
   });
@@ -307,10 +307,10 @@ function currentSnippet() {
 document.getElementById("flag").onclick = async () => {
   const snippet = currentSnippet();
   if (snippet.trim().length < 12) {
-    alert("Couldn't read the current passage — flip to a text page and retry.");
+    alert("無法讀取目前段落 — 請翻到文字頁面後再試一次。");
     return;
   }
-  const note = prompt("Flag this spot — what's wrong? (optional note)");
+  const note = prompt("標記此處 — 有什麼問題？（選填備註）");
   if (note === null) return;
   try {
     const r = await fetch(`/api/projects/${encodeURIComponent(project)}/reader-flag`, {
@@ -318,9 +318,9 @@ document.getElementById("flag").onclick = async () => {
       body: JSON.stringify({snippet, note: note || null})});
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || r.statusText);
-    alert(`Flagged ${d.printed_number != null ? "page " + d.printed_number : d.page}` +
-          " — it's on the reshoot list and in the capture wizard.");
-  } catch (e) { alert("flag failed: " + e.message); }
+    alert(`已標記 ${d.printed_number != null ? "第 " + d.printed_number + " 頁" : d.page}` +
+          " — 已加入重拍清單與補拍精靈。");
+  } catch (e) { alert("標記失敗：" + e.message); }
 };
 
 document.getElementById("pg-prev").onclick = () => rendition.prev();
