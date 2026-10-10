@@ -69,9 +69,11 @@ def find_executable(provider: str, cli_path: str = "") -> str:
 def codex_home() -> Path:
     """codex's own CODEX_HOME, kept apart from ~/.codex so the user's MCP
     servers, plugins and config never load. It holds its own login: sharing
-    ~/.codex/auth.json would let one copy rotate the other's refresh token."""
+    ~/.codex/auth.json would let one copy rotate the other's refresh token.
+    Dot-named because it sits beside the book projects and no project may
+    take its name (a project's config.toml would become codex's config)."""
     from ..config import global_config_path
-    return global_config_path().parent / "codex-home"
+    return global_config_path().parent / ".codex-home"
 
 
 def check_codex_login() -> None:

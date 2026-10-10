@@ -298,3 +298,12 @@ def test_codex_without_its_own_login_fails_clearly(monkeypatch, tmp_path):
     monkeypatch.setattr(cb.shutil, "which", lambda x: "/bin/codex")
     with pytest.raises(RuntimeError, match="codex login"):
         get_backend(make_cfg("codex"))
+
+
+def test_codex_home_cannot_collide_with_a_project(monkeypatch):
+    """codex-home sits next to the book projects. A project of the same name
+    would hand codex that folder's config.toml (MCP servers = code execution),
+    so the name must be one a project can never have."""
+    from flipscan.ui.security import is_plain_name
+    monkeypatch.undo()                      # the real codex_home, not the fixture's
+    assert not is_plain_name(cb.codex_home().name)
