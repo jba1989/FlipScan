@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 
 from flipscan import keystone, workres
-from flipscan.warpchain import Chain
+from flipscan.warpchain import Chain, apply
 
 
 def _page(w=900, h=1200):
@@ -24,12 +24,8 @@ def _warp(img, dst):
 
 
 def _corrected(img):
-    """correct_keystone through the chain, keeping the validity mask."""
-    chain = Chain.identity(img)
-    preview, valid, scale = chain.preview(img)
-    found = keystone.keystone_step(preview, valid, scale, chain.size)
-    assert found is not None
-    return chain.then(*found).render(img)
+    """Keystone-corrected image and its validity mask."""
+    return apply(img, [keystone.keystone_step])
 
 
 def _mean_lean(img, valid=None):
@@ -51,7 +47,7 @@ def test_trapezoid_is_squared():
     # camera tilted toward the top: the top edge shrinks inward
     page = _warp(_page(), [[90, 0], [810, 0], [900, 1200], [0, 1200]])
     assert _mean_lean(page) > 2.0
-    assert keystone.correct_keystone(page) is not page
+    assert _corrected(page)[0] is not page
     assert _mean_lean(*_corrected(page)) < 0.5
 
 
@@ -62,14 +58,14 @@ def test_sheared_page_is_uprighted():
 
 def test_square_page_is_untouched():
     page = _page()
-    assert keystone.correct_keystone(page) is page
+    assert _corrected(page)[0] is page
 
 
 def test_page_without_verticals_is_untouched():
     page = np.full((1200, 900, 3), 235, np.uint8)
     for y in range(200, 1000, 40):
         cv2.rectangle(page, (160, y), (740, y + 16), (60, 60, 60), -1)
-    assert keystone.correct_keystone(page) is page
+    assert _corrected(page)[0] is page
 
 
 def test_padding_edge_is_not_a_vertical():
@@ -82,11 +78,11 @@ def test_padding_edge_is_not_a_vertical():
         cv2.rectangle(page, (160, y), (740, y + 16), (30, 30, 30), -1)
     base = Chain.identity(page)
     chain = base.then(*rotation_step(6.0, base.size))
-    preview, valid, scale = chain.preview(page)
-    seg = keystone.vertical_segments(cv2.cvtColor(preview, cv2.COLOR_BGR2GRAY))
+    preview = chain.preview(cv2.cvtColor(page, cv2.COLOR_BGR2GRAY))
+    seg = keystone.vertical_segments(preview.gray)
     assert len(seg) > 0                            # the padding edges are seen...
-    assert len(keystone.drop_padding_edges(seg, valid)) == 0   # ...and dropped
-    assert keystone.keystone_step(preview, valid, scale, chain.size) is None
+    assert len(keystone.drop_padding_edges(seg, preview.valid)) == 0   # ...and dropped
+    assert keystone.keystone_step(preview) is None
 
 
 def test_implausible_correction_is_refused():

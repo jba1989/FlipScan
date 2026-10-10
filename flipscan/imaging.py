@@ -310,15 +310,15 @@ def _text_runs(profile: np.ndarray, thr: float, bridge: int) -> list[tuple[int, 
 
 
 def tighten_to_text(page: np.ndarray, side: str | None = None,
-                    extent: tuple[int, int] | None = None) -> np.ndarray:
+                    valid: np.ndarray | None = None) -> np.ndarray:
     """Cut slivers of OTHER pages (stacked beneath this one) off the sides of
     a corrected page. The cut sits right past the foreign text, never at this
     page's own text: printed page numbers live in the blank outer margin
     between the two, which is exactly the side the stacked pages show up on.
     `side` is which half of a spread this page is ("left"/"right"): stacked
-    pages lie only on its OUTER side, never at the spine. `extent` is the
-    (first, last) column of real content when a warp padded the sides, so
-    "touches the outer edge" is measured from the page, not the padding.
+    pages lie only on its OUTER side, never at the spine. `valid` marks real
+    pixels when a warp padded the sides, so "touches the outer edge" is
+    measured from the page content, not the padding.
     Full height is kept; unchanged when there is no clear main text block.
 
     Biased to keep: a leftover sliver costs a few stray words, a wrong cut
@@ -335,7 +335,8 @@ def tighten_to_text(page: np.ndarray, side: str | None = None,
     main = max(runs, key=lambda r: float(cols[r[0]:r[1] + 1].sum()))
     if main[1] - main[0] < 0.3 * w:
         return page
-    cx0, cx1 = extent if extent is not None else (0, w - 1)
+    cols = np.flatnonzero(valid.mean(axis=0) > 0.5) if valid is not None else []
+    cx0, cx1 = (int(cols[0]), int(cols[-1])) if len(cols) else (0, w - 1)
     cw = cx1 - cx0 + 1
     pad, edge = int(0.01 * w), int(0.03 * cw)
     slivers = [r for r in runs if r[1] - r[0] < 0.2 * w]   # main is >= 0.3w

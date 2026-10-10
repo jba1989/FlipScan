@@ -4,6 +4,15 @@ import cv2
 import numpy as np
 
 from flipscan import rectify, workres
+from flipscan.warpchain import apply
+
+
+def _deskew(img):
+    return apply(img, [rectify.skew_step])[0]
+
+
+def _dewarp(img):
+    return apply(img, [rectify.field_step])[0]
 
 
 def _page(curl=0.0, w=900, h=1200):
@@ -51,12 +60,12 @@ def test_blank_page_is_untouched():
 
 def test_flat_page_is_not_resampled():
     page = _page()
-    assert rectify.dewarp_text_lines(page) is page
+    assert _dewarp(page) is page
 
 
 def test_dewarp_flattens_curled_lines():
     curled = _page(curl=30)
-    flat = rectify.dewarp_text_lines(curled)
+    flat = _dewarp(curled)
     assert flat is not curled and flat.shape == curled.shape
     assert _line_bow(flat) < 0.4 * _line_bow(curled)
 
@@ -65,7 +74,7 @@ def test_straighten_handles_tilt_and_curl_together():
     page = _rotate(_page(curl=25), 3.0)
     out = rectify.straighten(page)
     # the tilted input has no measurable lines at all; deskew-only is the bar
-    assert _line_bow(out) < 0.5 * _line_bow(rectify.deskew(page))
+    assert _line_bow(out) < 0.5 * _line_bow(_deskew(page))
 
 
 def test_vertical_text_is_left_alone():
@@ -76,4 +85,4 @@ def test_vertical_text_is_left_alone():
         for y in range(100, 1080, 26):
             cv2.rectangle(page, (x, y), (x + 20, y + 20), (30, 30, 30), -1)
     assert rectify.estimate_skew(page) == 0.0
-    assert rectify.dewarp_text_lines(page) is page
+    assert _dewarp(page) is page

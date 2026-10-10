@@ -6,13 +6,18 @@ import cv2
 import numpy as np
 
 WORK_LONG_EDGE = 1200      # analysis resolution; warps still run at full res
-PAPER = 255                # fill for canvas a warp exposes; keystone filters it
+PAPER = 255                # fill for canvas a warp exposes
+
+
+def work_scale(size: tuple[int, ...]) -> float:
+    """Downscale factor that brings a long edge to the analysis resolution."""
+    return min(1.0, WORK_LONG_EDGE / max(size))
 
 
 def work_gray(color: np.ndarray) -> tuple[np.ndarray, float]:
     """Grayscale copy downscaled to the analysis resolution, and its scale."""
     gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY) if color.ndim == 3 else color
-    scale = min(1.0, WORK_LONG_EDGE / max(gray.shape[:2]))
+    scale = work_scale(gray.shape[:2])
     if scale < 1.0:
         gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     return gray, scale

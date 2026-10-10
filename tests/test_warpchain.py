@@ -40,7 +40,7 @@ def test_translation_is_a_crop():
 def test_clip_keeps_pixels_beyond_the_crop_out():
     # rotating a crop must not pull in the frame around it
     img = _img()
-    crop = Chain.identity(img).then(translation(100, 75), (200, 150)).clipped()
+    crop = Chain.identity(img).crop(translation(100, 75), (200, 150))
     out, valid = crop.then(*rotation_step(20.0, crop.size)).render(img)
     assert not valid[0, 0] and (out[0, 0] == 255).all()   # corner: padding
     assert valid[out.shape[0] // 2, out.shape[1] // 2]
@@ -59,4 +59,6 @@ def test_tighten_measures_the_edge_from_real_content():
             cv2.rectangle(page, (x, y), (x + 14, y + 14), (30, 30, 30), -1)
             x += 20
     assert tighten_to_text(page, "left").shape == page.shape           # blind
-    assert tighten_to_text(page, "left", (100, 859)).shape[1] < 860 - 150
+    valid = np.ones(page.shape[:2], bool)
+    valid[:, :100] = False
+    assert tighten_to_text(page, "left", valid).shape[1] < 860 - 150

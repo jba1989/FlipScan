@@ -174,16 +174,11 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
         bgr = cv2.rotate(bgr, cv2.ROTATE_180)
 
     src, chain, isolated = _base_chain(bgr, page, cfg, scores, rotation, pad)
-    chain = chain.clipped()                            # the crop is the page
     if chain.steps and cfg["preprocess"].get("straighten", True):
         chain = straighten_warp(src, chain)            # whole-frame fallback: as-is
     color, valid = chain.render(src)                   # the one resample
-    if page.get("spread_quad"):
-        # trim stacked pages / desk wedges, measured from the real content
-        # edge rather than the padding a warp exposed
-        cols = np.flatnonzero(valid.mean(axis=0) > 0.5)
-        extent = (int(cols[0]), int(cols[-1])) if len(cols) else None
-        color = tighten_to_text(color, page.get("side"), extent)
+    if page.get("spread_quad"):                        # trim stacked pages / desk wedges
+        color = tighten_to_text(color, page.get("side"), valid)
     if cfg["preprocess"].get("dewarp"):
         color = dewarp_cylindrical(color)
     _write_page_images(ws, page, color, cfg)
@@ -193,19 +188,19 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
         page.pop("isolated", None)
 
 
-def _quad_chain(chain: Chain, bgr: np.ndarray, quad_norm, pad: float) -> Chain:
+def _quad_chain(bgr: np.ndarray, quad_norm, pad: float) -> Chain:
+    """The page quad (padded) as a crop of the frame."""
     step = page_step(bgr.shape, _pad_quad(np.array(quad_norm, dtype=np.float64), pad))
-    return chain.then(*step) if step else chain
+    return Chain.identity(bgr).crop(*step) if step else Chain.identity(bgr)
 
 
 def _base_chain(bgr: np.ndarray, page: dict, cfg: dict, scores: dict | None,
                 rotation: int, pad: float) -> tuple[np.ndarray, Chain, bool]:
     """(source, crop chain, isolated): where on the frame this page lies, as
     a transform — nothing is resampled yet."""
-    ident = Chain.identity(bgr)
     # one half of a split two-page spread (select decided): exactly that quad
     if page.get("spread_quad"):
-        return bgr, _quad_chain(ident, bgr, page["spread_quad"], pad), False
+        return bgr, _quad_chain(bgr, page["spread_quad"], pad), False
 
     # edge-density page isolation: crop straight to the flat readable page
     # (lighting-invariant; falls back to the quad path when not confident)
@@ -213,7 +208,8 @@ def _base_chain(bgr: np.ndarray, page: dict, cfg: dict, scores: dict | None,
         box = find_flat_page(bgr)
         if box is not None:
             x0, y0, x1, y1 = box
-            return bgr, ident.then(translation(x0, y0), (x1 - x0, y1 - y0)), True
+            crop = Chain.identity(bgr).crop(translation(x0, y0), (x1 - x0, y1 - y0))
+            return bgr, crop, True
 
     quad = None
     if cfg["preprocess"].get("mask_clutter", False):  # experimental: needs even lighting
@@ -223,18 +219,17 @@ def _base_chain(bgr: np.ndarray, page: dict, cfg: dict, scores: dict | None,
         book_mask, book_quad, _spine = isolate_book(bgr)
         if book_quad is not None:
             bgr = mask_outside(bgr, book_mask)
-            ident = Chain.identity(bgr)
             quad = book_quad
     fid = page.get("canonical")
     if quad is None and fid is not None and scores and fid in scores:
         quad = scores[fid].get("quad")
         if quad is not None and rotation == 180:
             quad = order_quad(1.0 - np.array(quad, dtype=np.float64))
-    if quad is None:  # patched photos have no score record: detect now
+    if quad is None:  # no score record for this frame: detect now
         quad, _ = detect_page_quad(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY))
     if quad is None:
-        return bgr, ident, False
-    return bgr, _quad_chain(ident, bgr, quad, pad), False
+        return bgr, Chain.identity(bgr), False
+    return bgr, _quad_chain(bgr, quad, pad), False
 
 
 def _orientation_sample(ws: Workspace, cfg: dict, video: dict,
@@ -252,7 +247,7 @@ def _orientation_sample(ws: Workspace, cfg: dict, video: dict,
         return None
     quad = (scores.get(fid) or {}).get("quad")
     if quad is not None:
-        bgr = correct_page(bgr, _pad_quad(np.array(quad, dtype=np.float64), 0.02))
+        bgr = _quad_chain(bgr, quad, 0.02).render(bgr)[0]
     out = ws.work_file(f"_orient_{vid}.jpg")
     cv2.imwrite(str(out), llm_copy(bgr, 1200), [cv2.IMWRITE_JPEG_QUALITY, 85])
     return out

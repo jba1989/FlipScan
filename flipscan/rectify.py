@@ -9,13 +9,13 @@ Passes, each gated so a page without enough evidence is left untouched
 (the invoshot lesson: an uncertain observation must degrade to a no-op):
 
 1. ``estimate_skew``: whole-page rotation by projection-profile search.
-2. ``fit_text_field``: residual curl / keystone. Text-line centerlines are
+2. ``field_step``: residual curl / keystone. Text-line centerlines are
    fit jointly to one smooth vertical displacement field.
 3. ``keystone.keystone_step``: page verticals upright.
 
-Each pass only estimates a step of a warpchain.Chain from a fresh preview of
-the source; ``straighten_warp`` returns the chain and the frame is resampled
-once (warpchain.py).
+Each pass is a warpchain estimator: it reads a Preview of the source and
+returns a step; ``straighten_warp`` returns the chain and the frame is
+resampled once (warpchain.py).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import cv2
 import numpy as np
 
 from .keystone import keystone_step
-from .warpchain import Chain, Homography, Size
+from .warpchain import Chain, Estimate, Homography, Preview, Size, apply, to_gray
 from .workres import ink_mask, work_gray
 
 MAX_SKEW_DEG = 10.0        # beyond this it's a mis-framed shot, not skew
@@ -166,17 +166,28 @@ class FieldStep:
 
     def back(self, xs: np.ndarray, ys: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         sw, sh = self.work
-        xw, yw = xs * self.scale, ys * self.scale
+        x0, x1, y0, y1 = self.bounds
+        yw = ys * self.scale
+        # x is fixed across the inversion, so fold it in once: d becomes a
+        # polynomial in y alone, P_k(x) y^k, evaluated by Horner per iteration
+        xn = np.clip((xs * self.scale - sw / 2) / sw, x0, x1)
+        c = self.coef.reshape(X_DEGREE, Y_DEGREE + 1)
+        xpow = np.cumprod(np.broadcast_to(xn, (X_DEGREE,) + np.shape(xn)), axis=0)
+        p = np.tensordot(c.T, xpow, axes=1)            # P_k(x), k = 0..Y_DEGREE
         src = yw
         for _ in range(3):                             # fixed-point inversion
-            src = yw + _field(self.coef, self.bounds, xw, src, sw, sh)
+            yn = np.clip(src / sh, y0, y1)
+            d = p[-1]
+            for pk in p[-2::-1]:
+                d = pk + yn * d
+            src = yw + d
         return xs, src / self.scale
 
 
-def fit_text_field(preview: np.ndarray, scale: float) -> FieldStep | None:
+def field_step(preview: Preview) -> Estimate | None:
     """Field that flattens curled / keystoned text lines, or None unless the
     fit is confident and clearly helps."""
-    gray, _ = work_gray(preview)
+    gray = preview.gray
     sh, sw = gray.shape
     fit = fit_displacement(_line_samples(ink_mask(gray)), sw, sh)
     if fit is None:
@@ -187,47 +198,23 @@ def fit_text_field(preview: np.ndarray, scale: float) -> FieldStep | None:
     gy, gx = np.mgrid[0:sh:4, 0:sw:4].astype(np.float64)
     if np.abs(_field(coef, bounds, gx, gy, sw, sh)).max() > MAX_DISPLACEMENT * sh:
         return None
-    return FieldStep(coef, bounds, (sw, sh), scale)
+    return FieldStep(coef, bounds, (sw, sh), preview.scale), preview.size
+
+
+def skew_step(preview: Preview) -> Estimate | None:
+    angle = estimate_skew(preview.gray)
+    return rotation_step(angle, preview.size) if angle else None
+
+
+STRAIGHTEN = [skew_step, field_step, keystone_step]
 
 
 def straighten_warp(src: np.ndarray, base: Chain) -> Chain:
-    """Extend `base` with deskew, text-line flattening and keystone steps.
-    Each estimator sees a fresh preview of the SOURCE through the chain so
-    far — never a re-warp of the previous pass's output."""
-    chain = base
-    preview, _valid, _scale = chain.preview(src)
-    angle = estimate_skew(preview)
-    if angle:
-        chain = chain.then(*rotation_step(angle, chain.size))
-    preview, _valid, scale = chain.preview(src)
-    field = fit_text_field(preview, scale)
-    if field is not None:
-        chain = chain.then(field, chain.size)
-    preview, valid, scale = chain.preview(src)
-    found = keystone_step(preview, valid, scale, chain.size)
-    if found is not None:
-        chain = chain.then(*found)
-    return chain
-
-
-def _apply(color: np.ndarray, chain: Chain) -> np.ndarray:
-    return chain.render(color)[0]
+    """Extend `base` with deskew, text-line flattening and keystone steps."""
+    return base.estimate(to_gray(src), STRAIGHTEN)
 
 
 def straighten(color: np.ndarray) -> np.ndarray:
     """All passes on a ready-cropped page image; the input itself comes back
     when nothing needed fixing."""
-    return _apply(color, straighten_warp(color, Chain.identity(color)))
-
-
-def deskew(color: np.ndarray) -> np.ndarray:
-    chain = Chain.identity(color)
-    angle = estimate_skew(color)
-    return _apply(color, chain.then(*rotation_step(angle, chain.size)) if angle else chain)
-
-
-def dewarp_text_lines(color: np.ndarray) -> np.ndarray:
-    chain = Chain.identity(color)
-    preview, _valid, scale = chain.preview(color)
-    field = fit_text_field(preview, scale)
-    return _apply(color, chain.then(field, chain.size) if field is not None else chain)
+    return apply(color, STRAIGHTEN)[0]

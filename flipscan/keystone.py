@@ -17,8 +17,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from .warpchain import Chain, Homography, Size
-from .workres import work_gray
+from .warpchain import Estimate, Homography, Preview
 
 MAX_LEAN_DEG = 15.0        # segments leaning further are not page verticals
 MIN_SEGMENT = 0.08         # of page height
@@ -135,14 +134,12 @@ def shear_homography(seg: np.ndarray, h: int) -> np.ndarray | None:
     return np.array([[1.0, -median, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
 
 
-def keystone_step(preview: np.ndarray, valid: np.ndarray, scale: float,
-                  size: Size) -> tuple[Homography, Size] | None:
-    """Step that uprights the page's verticals, estimated on a preview
-    rendered at `scale` of a page of `size`; None unless the vanishing point
-    is well supported and the correction plausible."""
-    gray, _ = work_gray(preview)
+def keystone_step(preview: Preview) -> Estimate | None:
+    """Step that uprights the page's verticals; None unless the vanishing
+    point is well supported and the correction plausible."""
+    gray, scale = preview.gray, preview.scale
     sh, sw = gray.shape
-    seg = drop_padding_edges(vertical_segments(gray), valid)
+    seg = drop_padding_edges(vertical_segments(gray), preview.valid)
     vp = vanishing_point(seg, sw, sh)
     hc = keystone_homography(vp, sh) if vp is not None else None
     if hc is None:
@@ -153,7 +150,7 @@ def keystone_step(preview: np.ndarray, valid: np.ndarray, scale: float,
     if abs(shear) < 0.005 and abs(persp * sh) < 0.01:
         return None                                    # already square
 
-    w, h = size
+    w, h = preview.size
     to_c = np.array([[scale, 0, -sw / 2], [0, scale, -sh / 2], [0, 0, 1.0]])
     m = np.linalg.inv(to_c) @ hc @ to_c                # full-res pixel coords
     corners = np.array([[0, 0], [w, 0], [w, h], [0, h]], np.float64).reshape(-1, 1, 2)
@@ -164,12 +161,3 @@ def keystone_step(preview: np.ndarray, valid: np.ndarray, scale: float,
     place = np.array([[fit, 0, -x0 * fit], [0, fit, -y0 * fit], [0, 0, 1.0]])
     out_size = (int(round((x1 - x0) * fit)), int(round((y1 - y0) * fit)))
     return Homography(place @ m), out_size
-
-
-def correct_keystone(color: np.ndarray) -> np.ndarray:
-    """keystone_step applied to a ready page image (the input itself comes
-    back when there is nothing to fix)."""
-    chain = Chain.identity(color)
-    preview, valid, scale = chain.preview(color)
-    found = keystone_step(preview, valid, scale, chain.size)
-    return chain.then(*found).render(color)[0] if found else color
