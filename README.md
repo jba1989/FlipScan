@@ -211,6 +211,7 @@ motion_spike_factor = 2.5        # rest = motion below median * factor
 isolate_page = true              # edge-detection page crop (falls back to quad)
 llm_long_edge = 1600             # LLM copy downscale
 quad_pad = 0.025                 # crop padding so page numbers survive
+straighten = true                # deskew + flatten curl from the text lines
 dewarp = false                   # cylindrical curl correction
 split_spreads = false            # split a flat open two-page spread at the fold
 

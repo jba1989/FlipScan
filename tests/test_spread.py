@@ -86,6 +86,31 @@ def test_tighten_keeps_the_page_number_in_the_outer_corner():
     assert x_off < 120 and out.shape[0] == page.shape[0]
 
 
+def test_tighten_keeps_own_text_split_by_a_gutter():
+    # a chart's axis labels / a short column leave a gap inside the page's
+    # OWN text block — a wide run past that gap is not a stacked page
+    page = np.full((1000, 760, 3), 235, np.uint8)
+    _text_lines(page, 40, 460, 120, 860)
+    _text_lines(page, 540, 720, 120, 860)
+    assert tighten_to_text(page).shape == page.shape
+
+
+def test_tighten_ignores_a_speck_in_the_middle_of_the_page():
+    page = np.full((1000, 760, 3), 235, np.uint8)
+    _text_lines(page, 40, 420, 120, 860)
+    _text_lines(page, 470, 500, 400, 440)          # stray mark mid-page
+    _text_lines(page, 560, 720, 120, 860)          # rest of this page's text
+    assert tighten_to_text(page).shape == page.shape
+
+
+def test_tighten_never_cuts_at_the_spine():
+    # a right-hand page's stacked pages lie on its RIGHT; the same sliver
+    # pattern on its left (spine side) is its own text — keep it
+    page = _page_with_stacked_sliver()
+    assert tighten_to_text(page, side="right").shape == page.shape
+    assert tighten_to_text(page, side="left").shape[1] <= 760 - 70
+
+
 def test_tighten_keeps_page_without_confident_block():
     blank = np.full((1000, 760, 3), 235, np.uint8)
     assert tighten_to_text(blank).shape == blank.shape

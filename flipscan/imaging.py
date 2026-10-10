@@ -309,12 +309,20 @@ def _text_runs(profile: np.ndarray, thr: float, bridge: int) -> list[tuple[int, 
     return runs
 
 
-def tighten_to_text(page: np.ndarray) -> np.ndarray:
+def tighten_to_text(page: np.ndarray, side: str | None = None) -> np.ndarray:
     """Cut slivers of OTHER pages (stacked beneath this one) off the sides of
     a corrected page. The cut sits right past the foreign text, never at this
     page's own text: printed page numbers live in the blank outer margin
     between the two, which is exactly the side the stacked pages show up on.
-    Full height is kept; unchanged when there is no clear main text block."""
+    `side` is which half of a spread this page is ("left"/"right"): stacked
+    pages lie only on its OUTER side, never at the spine. Full height is kept;
+    unchanged when there is no clear main text block.
+
+    Biased to keep: a leftover sliver costs a few stray words, a wrong cut
+    loses real text for good. So a foreign run must be a narrow strip that
+    touches the outer edge — a run mid-page, or one wider than a sliver, is
+    this page's own text broken by a gutter (a chart's axis labels, a faint
+    highlighted line)."""
     gray = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
     cols = np.convolve(_text_density(gray).mean(axis=0), np.ones(9) / 9, "same")
@@ -324,9 +332,12 @@ def tighten_to_text(page: np.ndarray) -> np.ndarray:
     main = max(runs, key=lambda r: float(cols[r[0]:r[1] + 1].sum()))
     if main[1] - main[0] < 0.3 * w:
         return page
-    pad = int(0.01 * w)
-    left = max((r[1] for r in runs if r[1] < main[0]), default=-1)
-    right = min((r[0] for r in runs if r[0] > main[1]), default=w)
+    pad, edge = int(0.01 * w), int(0.03 * w)
+    slivers = [r for r in runs if r[1] - r[0] < 0.2 * w]   # main is >= 0.3w
+    left = max((r[1] for r in slivers if side != "right" and r[0] <= edge
+                and r[1] < min(main[0], 0.25 * w)), default=-1)
+    right = min((r[0] for r in slivers if side != "left" and r[1] >= w - 1 - edge
+                 and r[0] > max(main[1], 0.75 * w)), default=w)
     x0 = 0 if left < 0 else min(left + pad, main[0])
     x1 = w if right >= w else max(right - pad, main[1] + 1)
     return page[:, x0:x1]

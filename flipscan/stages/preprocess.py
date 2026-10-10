@@ -6,6 +6,8 @@ Per page writes into work/pages/:
 
 Handles per-video 180-degree rotation (video shot upside down) and pads the
 page quad so edge content (printed page numbers!) survives the crop.
+Every machine crop is then straightened from its own text lines (rectify.py:
+deskew + curl/keystone flattening; [preprocess] straighten=false turns it off).
 Set config [preprocess] dewarp=true to apply simple cylindrical curl correction.
 """
 
@@ -16,6 +18,8 @@ import numpy as np
 
 from ..imaging import (detect_page_quad, find_flat_page, isolate_book,
                        mask_outside, order_quad, tighten_to_text)
+from ..rectify import straighten
+from ..workres import ink_mask
 from ..workspace import Workspace
 from .score import scores_by_frame_id
 from .select import frame_path
@@ -61,9 +65,7 @@ def dewarp_cylindrical(color: np.ndarray) -> np.ndarray:
     Falls back to the input untouched when the page has too little ink to fit."""
     h, w = color.shape[:2]
     gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
-    ink = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                                cv2.THRESH_BINARY_INV, 31, 15)
-    ink = cv2.dilate(ink, np.ones((5, 25), np.uint8))  # merge letters into lines
+    ink = cv2.dilate(ink_mask(gray), np.ones((5, 25), np.uint8))  # merge letters into lines
 
     xs, tops, bots = [], [], []
     step = max(1, w // 60)
@@ -94,6 +96,10 @@ def dewarp_cylindrical(color: np.ndarray) -> np.ndarray:
     map_x = np.broadcast_to(col_x[None, :], (h, w)).copy()
     return cv2.remap(color, map_x, map_y.astype(np.float32), cv2.INTER_LINEAR,
                      borderMode=cv2.BORDER_REPLICATE)
+
+
+def _straighten(color: np.ndarray, cfg: dict) -> np.ndarray:
+    return straighten(color) if cfg["preprocess"].get("straighten", True) else color
 
 
 def llm_copy(color: np.ndarray, long_edge: int) -> np.ndarray:
@@ -163,7 +169,8 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
     # page's quad, then trim stacked pages / desk wedges to its text block
     if page.get("spread_quad"):
         quad = _pad_quad(np.array(page["spread_quad"], dtype=np.float64), pad)
-        color = tighten_to_text(correct_page(bgr, quad))
+        color = tighten_to_text(_straighten(correct_page(bgr, quad), cfg),
+                                page.get("side"))
         if cfg["preprocess"].get("dewarp"):
             color = dewarp_cylindrical(color)
         _write_page_images(ws, page, color, cfg)
@@ -176,17 +183,10 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
             and not page.get("patched_source") and page.get("role") != "cover"):
         box = find_flat_page(bgr)
         if box is not None:
-            color = bgr[box[1]:box[3], box[0]:box[2]]
+            color = _straighten(bgr[box[1]:box[3], box[0]:box[2]], cfg)
             if cfg["preprocess"].get("dewarp"):
                 color = dewarp_cylindrical(color)
-            color_path = out_dir / f"{page['id']}_color.png"
-            llm_path = out_dir / f"{page['id']}_llm.jpg"
-            cv2.imwrite(str(color_path), color)
-            cv2.imwrite(str(llm_path),
-                        llm_copy(color, cfg["preprocess"]["llm_long_edge"]),
-                        [cv2.IMWRITE_JPEG_QUALITY, 85])
-            page["color"] = f"work/pages/{page['id']}_color.png"
-            page["llm_image"] = f"work/pages/{page['id']}_llm.jpg"
+            _write_page_images(ws, page, color, cfg)
             page["isolated"] = True
             return
     page.pop("isolated", None)
@@ -210,19 +210,12 @@ def preprocess_page(ws: Workspace, page: dict, cfg: dict,
 
     if quad is not None:
         quad = _pad_quad(np.array(quad, dtype=np.float64), pad)
-        color = correct_page(bgr, quad)
+        color = _straighten(correct_page(bgr, quad), cfg)
     else:
         color = bgr
     if cfg["preprocess"].get("dewarp"):
         color = dewarp_cylindrical(color)
-
-    color_path = out_dir / f"{page['id']}_color.png"
-    llm_path = out_dir / f"{page['id']}_llm.jpg"
-    cv2.imwrite(str(color_path), color)
-    cv2.imwrite(str(llm_path), llm_copy(color, cfg["preprocess"]["llm_long_edge"]),
-                [cv2.IMWRITE_JPEG_QUALITY, 85])
-    page["color"] = f"work/pages/{page['id']}_color.png"
-    page["llm_image"] = f"work/pages/{page['id']}_llm.jpg"
+    _write_page_images(ws, page, color, cfg)
 
 
 def _orientation_sample(ws: Workspace, cfg: dict, video: dict,
