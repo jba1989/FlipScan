@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -27,6 +28,10 @@ from . import (ORIENTATION_PROMPT, PROMPT, TranscriptionBackend,
 from ..i18n import tr
 
 EXECUTABLES = {"codex": "codex", "claude_cli": "claude", "agy": "agy"}
+# The model goes into argv as `-m` / `--model` <value>: it must never start
+# with `-` (the CLI would read it as a flag), and a book folder's config.toml
+# can set it. The UI settings reuse this same pattern.
+CLI_MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}")
 IMAGE_NAME = "page.jpg"
 OUT_NAME = "answer.txt"
 # API keys in the environment would make the CLIs bill the API instead of
@@ -64,6 +69,14 @@ def find_executable(provider: str, cli_path: str = "") -> str:
         raise RuntimeError(tr("找不到 {0} 指令列工具 — 請先安裝並登入，或設定 cli_path",
                               cli_path or exe))
     return found
+
+
+def check_cli_model(model: str) -> str:
+    """Return `model` if it is empty or a plain model name, else raise."""
+    if model and not CLI_MODEL_RE.fullmatch(model):
+        raise RuntimeError(tr("cli_model 不合法：僅允許英數字與 . _ : / -，"
+                              "不能以 - 開頭，最長 80 字元"))
+    return model
 
 
 def codex_home() -> Path:
@@ -152,7 +165,7 @@ class CliBackend(TranscriptionBackend):
         self.exe = find_executable(self.provider, p.get("cli_path", ""))
         if self.provider == "codex":
             check_codex_login()
-        self.model = p.get("cli_model", "")
+        self.model = check_cli_model(p.get("cli_model", ""))
         self.timeout = float(p.get("cli_timeout", 300))
         self.retries = int(p.get("cli_retries", 2))
         self.concurrency = max(1, int(p.get("cli_concurrency", 1)))

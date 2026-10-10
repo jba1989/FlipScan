@@ -342,18 +342,58 @@ function pickBook(i) {
   $("np-results").innerHTML = t("<div class='meta'>✓ 已帶入「") + esc(b.title) + t("」</div>");
 }
 
+// provider <option> labels: the value stays the provider id
+function providerLabel(p) {
+  return {codex: t("codex — ChatGPT 訂閱"), claude_cli: t("claude_cli — Claude 訂閱"),
+          agy: t("agy — Antigravity 訂閱")}[p] || p;
+}
+const providerOption = (p, sel) =>
+  `<option value="${p}" ${p === sel ? "selected" : ""}>${providerLabel(p)}</option>`;
+
+// one status line per subscription CLI
+function cliStatusRow(name, s) {
+  const ok = (s.cli_available || {})[name];
+  const inst = ok ? t('<span class="badge ok">已安裝</span>')
+                  : t('<span class="badge suspect">未安裝</span>');
+  let login = t("使用該 CLI 既有的登入");
+  if (name === "codex") {
+    login = s.codex_logged_in ? t('<span class="badge ok">已登入</span>')
+      : T`<span class="badge acceptable">尚未登入</span> 請在終端機執行一次：<code style="word-break:break-all">${esc(s.codex_login_cmd)}</code>`;
+  }
+  return `<div class="meta" style="margin:.2rem 0"><b>${providerLabel(name)}</b>
+    ${inst} · ${login}</div>`;
+}
+
+function cliSettingsCard(s) {
+  return T`<hr style="border:0;border-top:1px solid var(--line);margin:.9rem 0">
+    <label>訂閱 CLI（使用 ChatGPT / Claude / Antigravity 訂閱額度）</label>
+    ${["codex", "claude_cli", "agy"].map(n => cliStatusRow(n, s)).join("")}
+    <label>模型 <span class="meta">（cli_model）</span></label>
+    <input id="set-climodel" value="${esc(s.cli_model || "")}" maxlength="80"
+           placeholder="${t("留空 = 使用 CLI 預設模型")}">
+    <div class="row" style="flex-wrap:wrap">
+      <div><label>同時處理頁數 <span class="meta">（1–4）</span></label>
+        <input id="set-cliconc" type="number" min="1" max="4" step="1"
+               value="${s.cli_concurrency}" style="width:6rem"></div>
+      <div><label>單頁逾時秒數 <span class="meta">（60–1800）</span></label>
+        <input id="set-clitimeout" type="number" min="60" max="1800" step="10"
+               value="${s.cli_timeout}" style="width:6rem"></div>
+    </div>
+    <div class="meta" style="margin:.3rem 0 .6rem">${t("⚠ codex / claude_cli / agy 會使用本機已登入的訂閱 CLI：頁面圖片會傳送至該服務，並消耗訂閱額度。")}
+      ${t("實測 claude_cli 最快也最準（約 15 秒／頁），codex 約 20–40 秒，agy 約 80 秒，且 agy 會從暫存檔讀取圖片。")}</div>`;
+}
+
 async function showSettings() {
   current = null;
   closeNav();
   const s = await api("/settings");
-  const noCli = Object.keys(s.cli_available || {}).filter(k => !s.cli_available[k]);
   $("main").innerHTML = T`
   <div class="card">
     <h2>設定 <span class="meta">（套用至所有專案）</span></h2>
     <label>辨識服務提供者</label>
     <select id="set-provider">
       ${["ollama","anthropic","openai","codex","claude_cli","agy","hybrid","mock"].map(p =>
-        `<option ${p === s.provider ? "selected" : ""}>${p}</option>`).join("")}
+        providerOption(p, s.provider)).join("")}
     </select>
     <div class="meta" style="margin:.2rem 0 .6rem"><b>openai</b> = 任何相容 OpenAI 的視覺 API（OpenAI、Google Gemini、OpenRouter、Groq、本地 vLLM/LM Studio）— 請在下方設定。</div>
     <label>Ollama 伺服器 URL</label>
@@ -395,19 +435,17 @@ async function showSettings() {
            placeholder="${s.openai_api_key_set ? t("保留空白以維持目前金鑰")
              : t("OpenAI / OpenRouter / Gemini 金鑰")}">
     <div class="meta" style="margin:.3rem 0 .6rem">⚠ openai 服務提供者會將每一頁的圖片傳送至該服務（與本地端 Ollama 不同）。</div>
+    ${cliSettingsCard(s)}
     <label>當 hybrid 升級時，將低信心度頁面傳送至</label>
     <select id="set-escto" style="width:auto">
       ${["anthropic","openai","codex","claude_cli","agy"].map(v =>
-        `<option ${v === s.escalate_to ? "selected" : ""}>${v}</option>`).join("")}
+        providerOption(v, s.escalate_to)).join("")}
     </select>
     <div class="meta" style="margin:.6rem 0">儲存於本機專案資料夾中的
       config.toml。Hybrid 模式會先在本地進行辨識，僅在頁面被標記時才傳送至所選的雲端服務提供者。</div>
     <button onclick="saveSettings()">儲存設定</button>
     <span class="meta" id="settings-status" style="margin-left:.6rem"></span>
   </div>`;
-  $("set-escto").insertAdjacentHTML("afterend",
-    `<div class="meta" style="margin:.3rem 0 .6rem">${t("⚠ codex / claude_cli / agy 會使用本機已登入的訂閱 CLI：頁面圖片會傳送至該服務，並消耗訂閱額度。")}${
-      noCli.length ? " " + t("找不到指令：") + noCli.join(", ") : ""}</div>`);
   testOllama();
 }
 async function testOllama() {
@@ -430,7 +468,8 @@ function setOaiPreset(url, model) {
 }
 
 async function saveSettings() {
-  await api("/settings", {method:"PUT", headers:{"Content-Type":"application/json"},
+  try {
+    await api("/settings", {method:"PUT", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({
       provider: $("set-provider").value,
       ollama_url: $("set-ourl").value,
@@ -442,7 +481,14 @@ async function saveSettings() {
       openai_model: $("set-oaimodel").value,
       openai_api_key: $("set-oaikey").value,
       escalate_to: $("set-escto").value,
+      cli_model: $("set-climodel").value.trim(),
+      cli_concurrency: parseInt($("set-cliconc").value, 10),
+      cli_timeout: parseInt($("set-clitimeout").value, 10),
     })});
+  } catch (e) {
+    $("settings-status").textContent = "✗ " + e.message;
+    return;
+  }
   $("settings-status").textContent = t("已儲存 ✓");
   setTimeout(() => $("settings-status").textContent = "", 2500);
 }
@@ -773,7 +819,7 @@ async function openProject(name, tab) {
         ${p.running ? t("執行中…") : t("執行 / 繼續")}</button>
       <select id="provider" style="width:auto">
         <option value="">服務提供者：設定預設</option>
-        <option>ollama</option><option>anthropic</option><option>codex</option><option>claude_cli</option><option>agy</option><option>hybrid</option><option>mock</option>
+        <option>ollama</option><option>anthropic</option><option value="codex">codex — ChatGPT 訂閱</option><option value="claude_cli">claude_cli — Claude 訂閱</option><option value="agy">agy — Antigravity 訂閱</option><option>hybrid</option><option>mock</option>
       </select>
       <span class="meta">${p.videos.length} 部影片 · ${p.pages.length} 頁 ·
         ${p.pages.filter(x => x.status === "suspect").length} 頁可疑</span>

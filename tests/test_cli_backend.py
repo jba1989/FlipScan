@@ -307,3 +307,16 @@ def test_codex_home_cannot_collide_with_a_project(monkeypatch):
     from flipscan.ui.security import is_plain_name
     monkeypatch.undo()                      # the real codex_home, not the fixture's
     assert not is_plain_name(cb.codex_home().name)
+
+
+@pytest.mark.parametrize("model", ["--dangerously-skip-permissions", "-m",
+                                   "a b", "x;rm -rf", "a" * 81, " gpt-5"])
+def test_rejects_unsafe_cli_model(model):
+    with pytest.raises(RuntimeError, match="cli_model"):
+        cb.CliBackend(make_cfg("claude_cli", cli_model=model))
+
+
+@pytest.mark.parametrize("model", ["", "gpt-5.1-codex", "claude-sonnet-4-5",
+                                   "gemini-3-pro:high", "openai/gpt-4o"])
+def test_accepts_plain_cli_model(model):
+    assert cb.CliBackend(make_cfg("claude_cli", cli_model=model)).model == model
