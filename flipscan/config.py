@@ -31,7 +31,12 @@ DEFAULTS: dict[str, Any] = {
         "escalate_to": "anthropic",  # anthropic | openai | codex | claude_cli | agy
         # local subscription CLIs (codex / claude_cli / agy): images go to the
         # vendor's cloud and each page spends subscription quota
-        "cli_model": "",       # empty = the tool's own default model
+        # per-CLI model: the cheapest one that passed an OCR quality test on a
+        # real page (empty = the tool's own default, which is a pricey model)
+        "codex_model": "gpt-6-luna",
+        "codex_effort": "low",   # low | medium | high | xhigh
+        "claude_cli_model": "sonnet",
+        "agy_model": "gemini-3.8-flash-low",
         "cli_timeout": 300,    # seconds per call
         "cli_concurrency": 1,
         "cli_retries": 2,      # extra attempts after a timeout / failure

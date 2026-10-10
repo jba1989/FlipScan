@@ -228,15 +228,81 @@ def test_cli_path_overrides_lookup(monkeypatch):
 
 @pytest.mark.parametrize("name", ["codex", "claude_cli", "agy"])
 def test_get_backend_routes(name):
-    b = get_backend(make_cfg(name, cli_model="m"))
+    b = get_backend(make_cfg(name, **{f"{name}_model": "m"}))
     assert isinstance(b, cb.CliBackend) and b.provider == name
     assert b.name == f"{name}:m"
 
 
 def test_defaults_present():
     p = DEFAULTS["provider"]
-    assert (p["cli_model"], p["cli_timeout"], p["cli_concurrency"],
-            p["cli_retries"], p["cli_path"]) == ("", 300, 1, 2, "")
+    assert (p["cli_timeout"], p["cli_concurrency"],
+            p["cli_retries"], p["cli_path"]) == (300, 1, 2, "")
+    assert "cli_model" not in p
+
+
+def test_default_models_are_the_cheapest_that_passed_ocr():
+    p = DEFAULTS["provider"]
+    assert (p["codex_model"], p["codex_effort"]) == ("gpt-6-luna", "low")
+    assert p["claude_cli_model"] == "sonnet"
+    assert p["agy_model"] == "gemini-3.8-flash-low"
+
+
+@pytest.mark.parametrize("name, model", [
+    ("codex", "gpt-6-luna"), ("claude_cli", "sonnet"),
+    ("agy", "gemini-3.8-flash-low")])
+def test_each_provider_uses_its_own_model(monkeypatch, img, name, model):
+    r = install(monkeypatch, [claude_out(GOOD_JSON) if name == "claude_cli"
+                              else GOOD_JSON])
+    b = get_backend(make_cfg(name))
+    assert b.model == model
+    b.transcribe([("p1", img)], log=lambda m: None)
+    a = r.calls[0][0]
+    assert a[a.index("-m" if name == "codex" else "--model") + 1] == model
+
+
+def test_other_providers_model_is_ignored():
+    b = get_backend(make_cfg("agy", codex_model="x", claude_cli_model="y"))
+    assert b.model == "gemini-3.8-flash-low"
+
+
+def test_empty_model_means_cli_default(tmp_path):
+    (tmp_path / cb.IMAGE_NAME).write_bytes(b"x")
+    assert get_backend(make_cfg("agy", agy_model="")).model == ""
+    assert "--model" not in cb.build_invocation(
+        "agy", "/bin/agy", tmp_path, PROMPT, "").argv
+
+
+def test_codex_effort_flag(tmp_path):
+    (tmp_path / cb.IMAGE_NAME).write_bytes(b"x")
+    a = cb.build_invocation("codex", "/bin/codex", tmp_path, PROMPT,
+                            "gpt-6-luna", "low").argv
+    assert 'model_reasoning_effort="low"' in a
+    assert a[a.index('model_reasoning_effort="low"') - 1] == "-c"
+    a = cb.build_invocation("codex", "/bin/codex", tmp_path, PROMPT).argv
+    assert not any("reasoning_effort" in x for x in a)
+
+
+def test_effort_only_applies_to_codex(tmp_path):
+    (tmp_path / cb.IMAGE_NAME).write_bytes(b"x")
+    a = cb.build_invocation("agy", "/bin/agy", tmp_path, PROMPT, "m", "low").argv
+    assert not any("reasoning_effort" in x for x in a)
+
+
+def test_codex_backend_passes_configured_effort(monkeypatch, img):
+    r = install(monkeypatch, [GOOD_JSON])
+    get_backend(make_cfg("codex", codex_effort="high")).transcribe(
+        [("p1", img)], log=lambda m: None)
+    assert 'model_reasoning_effort="high"' in r.calls[0][0]
+
+
+@pytest.mark.parametrize("effort", ["max", 'low"; x', "LOW", " low", "-low"])
+def test_rejects_bad_codex_effort(effort):
+    with pytest.raises(RuntimeError, match="codex_effort"):
+        cb.CliBackend(make_cfg("codex", codex_effort=effort))
+
+
+def test_empty_codex_effort_is_allowed(tmp_path):
+    assert cb.CliBackend(make_cfg("codex", codex_effort="")).effort == ""
 
 
 @pytest.mark.parametrize("out, expected", [
@@ -312,11 +378,114 @@ def test_codex_home_cannot_collide_with_a_project(monkeypatch):
 @pytest.mark.parametrize("model", ["--dangerously-skip-permissions", "-m",
                                    "a b", "x;rm -rf", "a" * 81, " gpt-5"])
 def test_rejects_unsafe_cli_model(model):
-    with pytest.raises(RuntimeError, match="cli_model"):
-        cb.CliBackend(make_cfg("claude_cli", cli_model=model))
+    with pytest.raises(RuntimeError, match="claude_cli_model"):
+        cb.CliBackend(make_cfg("claude_cli", claude_cli_model=model))
 
 
 @pytest.mark.parametrize("model", ["", "gpt-5.1-codex", "claude-sonnet-4-5",
                                    "gemini-3-pro:high", "openai/gpt-4o"])
 def test_accepts_plain_cli_model(model):
-    assert cb.CliBackend(make_cfg("claude_cli", cli_model=model)).model == model
+    assert cb.CliBackend(make_cfg("claude_cli", claude_cli_model=model)).model == model
+
+
+# ------------------------------------------------------------ model catalog
+
+CODEX_MODELS = [
+    {"slug": "gpt-6-luna", "display_name": "GPT-6-Luna", "description": "Small",
+     "visibility": "list"},
+    {"slug": "hidden-one", "display_name": "Hidden", "description": "",
+     "visibility": "hide"},
+    {"slug": "gpt-6.1-sol", "display_name": "GPT-6.1-Sol", "description": "Big",
+     "visibility": "list"},
+]
+AGY_OUT = ("Fetching available models...\n"
+           "gemini-3.8-flash-high\tGemini 3.8 Flash (High)\n"
+           "gemini-3.8-flash-low\tGemini 3.8 Flash (Low)\n\n")
+
+
+@pytest.fixture(autouse=True)
+def fresh_model_cache():
+    cb.MODEL_CACHE.clear()
+    yield
+    cb.MODEL_CACHE.clear()
+
+
+def ids(entries):
+    return [e["id"] for e in entries]
+
+
+@pytest.mark.parametrize("shape", ["list", "dict"])
+def test_list_models_codex_parses_both_json_shapes(monkeypatch, shape):
+    payload = CODEX_MODELS if shape == "list" else {"models": CODEX_MODELS}
+    r = install(monkeypatch, [json.dumps(payload)])
+    out = cb.list_models("codex")
+    assert ids(out) == ["gpt-6-luna", "gpt-6.1-sol"]      # hidden one dropped
+    assert out[0]["label"] == "GPT-6-Luna" and out[0]["note"] == "Small"
+    assert out[0]["recommended"] is True and not out[1].get("recommended")
+    argv, kw = r.calls[0]
+    assert argv[1:3] == ["debug", "models"] and isinstance(argv, list)
+    assert kw["env"]["CODEX_HOME"] == str(cb.codex_home())
+    assert kw["timeout"] <= 30
+
+
+def test_list_models_codex_retries_without_isolated_home(monkeypatch):
+    r = install(monkeypatch, [subprocess.CompletedProcess([], 1, "", "no login"),
+                              json.dumps(CODEX_MODELS)])
+    assert ids(cb.list_models("codex")) == ["gpt-6-luna", "gpt-6.1-sol"]
+    assert len(r.calls) == 2
+    assert r.calls[1][1]["env"].get("CODEX_HOME") != str(cb.codex_home())
+
+
+@pytest.mark.parametrize("script", [
+    [subprocess.TimeoutExpired("codex", 1)],
+    [subprocess.CompletedProcess([], 1, "", "boom")],
+    ["not json"], ["[]"], ['{"models": []}'], ['"x"'], [OSError("gone")]])
+def test_list_models_codex_falls_back_to_static(monkeypatch, script):
+    install(monkeypatch, script)
+    out = cb.list_models("codex")
+    assert ids(out) == ["gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol", "gpt-5.6-luna"]
+    assert [e["id"] for e in out if e.get("recommended")] == ["gpt-6-luna"]
+
+
+def test_list_models_agy_parses_tab_lines(monkeypatch):
+    r = install(monkeypatch, [AGY_OUT])
+    out = cb.list_models("agy")
+    assert ids(out) == ["gemini-3.8-flash-high", "gemini-3.8-flash-low"]
+    assert out[1]["label"] == "Gemini 3.8 Flash (Low)" and out[1]["recommended"]
+    assert r.calls[0][0][1:] == ["models"]
+
+
+@pytest.mark.parametrize("script", [
+    [subprocess.TimeoutExpired("agy", 1)], ["Fetching available models...\n"],
+    [subprocess.CompletedProcess([], 2, "", "x")], [OSError("gone")]])
+def test_list_models_agy_falls_back_to_static(monkeypatch, script):
+    install(monkeypatch, script)
+    assert ids(cb.list_models("agy")) == ["gemini-3.8-flash-low",
+                                          "gemini-3.8-flash-medium"]
+
+
+def test_list_models_claude_is_static_and_never_spawns(monkeypatch):
+    r = install(monkeypatch, [""])
+    out = cb.list_models("claude_cli")
+    assert ids(out) == ["haiku", "sonnet", "opus"] and not r.calls
+    assert [e["id"] for e in out if e.get("recommended")] == ["sonnet"]
+
+
+def test_list_models_missing_cli_falls_back(monkeypatch):
+    monkeypatch.setattr(cb.shutil, "which", lambda n: None)
+    assert ids(cb.list_models("agy")) == ["gemini-3.8-flash-low",
+                                          "gemini-3.8-flash-medium"]
+
+
+def test_list_models_is_cached(monkeypatch):
+    r = install(monkeypatch, [AGY_OUT])
+    cb.list_models("agy")
+    cb.list_models("agy")
+    assert len(r.calls) == 1
+
+
+def test_list_models_drops_unsafe_ids(monkeypatch):
+    bad = [{"slug": "--evil", "display_name": "x", "visibility": "list"},
+           {"slug": "ok-model", "display_name": "ok", "visibility": "list"}]
+    install(monkeypatch, [json.dumps(bad)])
+    assert ids(cb.list_models("codex")) == ["ok-model"]

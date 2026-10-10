@@ -15,7 +15,8 @@ from fastapi import FastAPI, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
-from ..backends.cli_backend import EXECUTABLES, check_cli_model, codex_home
+from ..backends.cli_backend import (EXECUTABLES, check_cli_model,
+                                    check_codex_effort, codex_home, list_models)
 from ..config import load_config, save_global_config
 from ..jobs import CANCELED, DONE, ERROR, JobQueue
 from ..jobs_handlers import concurrency_config, register_handlers
@@ -135,8 +136,9 @@ class KeepBest(BaseModel):
     items: list[dict]  # [{page_id, fig_idx}, ...] — duplicates of one figure
 
 
-CLI_SETTING_KEYS = ("cli_model", "cli_timeout", "cli_concurrency",
-                    "cli_retries", "cli_path")
+CLI_MODEL_KEYS = ("codex_model", "claude_cli_model", "agy_model")
+CLI_SETTING_KEYS = (*CLI_MODEL_KEYS, "codex_effort", "cli_timeout",
+                    "cli_concurrency", "cli_retries", "cli_path")
 
 
 CLI_CONCURRENCY = (1, 4)    # parallel calls: each one spends subscription quota
@@ -159,7 +161,10 @@ class Settings(BaseModel):
     openai_api_key: str = ""
     escalate_to: str = "anthropic"
     # subscription CLIs; None = keep the stored value
-    cli_model: str | None = None
+    codex_model: str | None = None
+    codex_effort: str | None = None
+    claude_cli_model: str | None = None
+    agy_model: str | None = None
     cli_concurrency: int | None = None
     cli_timeout: int | None = None
 
@@ -167,11 +172,14 @@ class Settings(BaseModel):
 def _cli_settings(s: Settings, current: dict) -> dict:
     """The CLI fields a PUT may change, validated; a missing one keeps `current`."""
     out: dict = {}
-    if s.cli_model is not None:
-        try:
-            out["cli_model"] = check_cli_model(s.cli_model.strip())
-        except RuntimeError as e:
-            raise HTTPException(400, str(e))
+    try:
+        for key in CLI_MODEL_KEYS:
+            if (v := getattr(s, key)) is not None:
+                out[key] = check_cli_model(v.strip(), key)
+        if s.codex_effort is not None:
+            out["codex_effort"] = check_codex_effort(s.codex_effort.strip())
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
     if s.cli_concurrency is not None:
         if not CLI_CONCURRENCY[0] <= s.cli_concurrency <= CLI_CONCURRENCY[1]:
             raise HTTPException(400, tr("cli_concurrency 必須介於 {0} 到 {1}",
@@ -606,13 +614,18 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             "cli_available": {
                 name: bool(shutil.which(p.get("cli_path") or exe))
                 for name, exe in EXECUTABLES.items()},
-            "cli_model": p.get("cli_model", ""),
+            **{k: p.get(k, "") for k in (*CLI_MODEL_KEYS, "codex_effort")},
             "cli_concurrency": int(p.get("cli_concurrency", 1)),
             "cli_timeout": int(p.get("cli_timeout", 300)),
             # codex logs in under its own isolated home — show how to do that
             "codex_logged_in": (codex_home() / "auth.json").exists(),
             "codex_login_cmd": f"CODEX_HOME={shlex.quote(str(codex_home()))} codex login",
         }
+
+    @app.get("/api/settings/cli-models")
+    def cli_models():
+        """Model choices per subscription CLI (cached; falls back to a static list)."""
+        return {name: list_models(name) for name in EXECUTABLES}
 
     @app.put("/api/settings")
     def put_settings(s: Settings):

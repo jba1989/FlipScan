@@ -32,6 +32,9 @@ EXECUTABLES = {"codex": "codex", "claude_cli": "claude", "agy": "agy"}
 # with `-` (the CLI would read it as a flag), and a book folder's config.toml
 # can set it. The UI settings reuse this same pattern.
 CLI_MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,79}")
+# codex `-c model_reasoning_effort=<x>`; also from a book's config.toml, so
+# only these literals may reach argv
+CODEX_EFFORTS = ("low", "medium", "high", "xhigh")
 IMAGE_NAME = "page.jpg"
 OUT_NAME = "answer.txt"
 # API keys in the environment would make the CLIs bill the API instead of
@@ -71,12 +74,20 @@ def find_executable(provider: str, cli_path: str = "") -> str:
     return found
 
 
-def check_cli_model(model: str) -> str:
+def check_cli_model(model: str, field: str = "cli_model") -> str:
     """Return `model` if it is empty or a plain model name, else raise."""
     if model and not CLI_MODEL_RE.fullmatch(model):
-        raise RuntimeError(tr("cli_model 不合法：僅允許英數字與 . _ : / -，"
-                              "不能以 - 開頭，最長 80 字元"))
+        raise RuntimeError(tr("{0} 不合法：僅允許英數字與 . _ : / -，"
+                              "不能以 - 開頭，最長 80 字元", field))
     return model
+
+
+def check_codex_effort(effort: str) -> str:
+    """Return `effort` if it is empty or a known reasoning level, else raise."""
+    if effort and effort not in CODEX_EFFORTS:
+        raise RuntimeError(tr("codex_effort 不合法：僅允許 {0}",
+                              " / ".join(CODEX_EFFORTS)))
+    return effort
 
 
 def codex_home() -> Path:
@@ -97,7 +108,7 @@ def check_codex_login() -> None:
 
 
 def build_invocation(provider: str, exe: str, workdir: Path, prompt: str,
-                     model: str = "") -> Invocation:
+                     model: str = "", effort: str = "") -> Invocation:
     """The one place the three CLIs differ. `workdir` holds IMAGE_NAME."""
     image = workdir / IMAGE_NAME
     if provider == "codex":
@@ -110,6 +121,8 @@ def build_invocation(provider: str, exe: str, workdir: Path, prompt: str,
         argv += ["-c", 'web_search="disabled"']
         if model:
             argv += ["-m", model]
+        if effort:
+            argv += ["-c", f'model_reasoning_effort="{check_codex_effort(effort)}"']
         return Invocation(argv + ["-"], prompt + GUARD)
     if provider == "claude_cli":
         argv = [exe, "-p", "--input-format", "stream-json",
@@ -165,7 +178,10 @@ class CliBackend(TranscriptionBackend):
         self.exe = find_executable(self.provider, p.get("cli_path", ""))
         if self.provider == "codex":
             check_codex_login()
-        self.model = check_cli_model(p.get("cli_model", ""))
+        key = f"{self.provider}_model"
+        self.model = check_cli_model(p.get(key, ""), key)
+        self.effort = (check_codex_effort(p.get("codex_effort", ""))
+                       if self.provider == "codex" else "")
         self.timeout = float(p.get("cli_timeout", 300))
         self.retries = int(p.get("cli_retries", 2))
         self.concurrency = max(1, int(p.get("cli_concurrency", 1)))
@@ -183,7 +199,7 @@ class CliBackend(TranscriptionBackend):
             workdir = Path(tmp)
             shutil.copyfile(image_path, workdir / IMAGE_NAME)
             inv = build_invocation(self.provider, self.exe, workdir, prompt,
-                                   self.model)
+                                   self.model, self.effort)
             try:
                 r = subprocess.run(inv.argv, input=inv.stdin, capture_output=True,
                                    text=True, cwd=workdir, env=self._env(),
@@ -229,3 +245,96 @@ class CliBackend(TranscriptionBackend):
             return parse_orientation(self._ask(image_path, ORIENTATION_PROMPT))
         except Exception:
             return None
+
+
+# ---------------------------------------------------------------- model catalog
+# The dropdowns in the settings UI. Asking the CLIs is slow (seconds, a login
+# may be needed), so answers are cached for the life of the process; any
+# failure falls back to a short static list and is never raised.
+LIST_TIMEOUT = 20
+MODEL_CACHE: dict[str, list[dict]] = {}
+_STATIC_MODELS = {
+    "codex": [("gpt-6-luna", "GPT-6-Luna", ""), ("gpt-6.1-sol", "GPT-6.1-Sol", ""),
+              ("gpt-6-sol", "GPT-6-Sol", ""), ("gpt-5.6-luna", "GPT-5.6-Luna", "")],
+    "claude_cli": [("haiku", "Haiku", "最便宜，但測試中會漏掉部分文字"),
+                   ("sonnet", "Sonnet", "速度與準確度兼顧"),
+                   ("opus", "Opus", "最貴")],
+    "agy": [("gemini-3.8-flash-low", "Gemini 3.8 Flash (Low)", ""),
+            ("gemini-3.8-flash-medium", "Gemini 3.8 Flash (Medium)", "")],
+}
+
+
+def _entries(rows, provider: str) -> list[dict]:
+    """[(id, label, note)] -> catalog entries, unsafe ids dropped, default marked."""
+    from ..config import DEFAULTS
+    default = DEFAULTS["provider"].get(f"{provider}_model")
+    out = []
+    for mid, label, note in rows:
+        if not isinstance(mid, str) or not CLI_MODEL_RE.fullmatch(mid):
+            continue
+        entry = {"id": mid, "label": str(label or mid), "note": str(note or "")}
+        if mid == default:
+            entry["recommended"] = True
+        out.append(entry)
+    return out
+
+
+def _run_listing(argv: list[str], env: dict) -> str | None:
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, env=env,
+                           timeout=LIST_TIMEOUT, stdin=subprocess.DEVNULL)
+    except (subprocess.SubprocessError, OSError):
+        return None
+    return r.stdout if r.returncode == 0 else None
+
+
+def _parse_codex_models(text: str) -> list[tuple]:
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return []
+    rows = data.get("models") if isinstance(data, dict) else data
+    return [(m.get("slug") or m.get("id"), m.get("display_name"), m.get("description"))
+            for m in rows or [] if isinstance(m, dict) and m.get("visibility") == "list"]
+
+
+def _parse_agy_models(text: str) -> list[tuple]:
+    # "Fetching available models..." precedes `id<TAB>Display Name` lines
+    return [(mid.strip(), label.strip(), "") for mid, _, label in
+            (ln.partition("\t") for ln in text.splitlines()) if label]
+
+
+def _lookup_models(provider: str) -> list[dict]:
+    try:
+        exe = find_executable(provider, _configured_cli_path())
+    except RuntimeError:
+        return []
+    env = {k: v for k, v in os.environ.items() if k not in _STRIP_ENV}
+    if provider == "codex":
+        # its isolated home first (it may hold a different catalog); else the
+        # default home, which is only read here, never written
+        isolated = {**env, "CODEX_HOME": str(codex_home())}
+        for e in (isolated, {k: v for k, v in env.items() if k != "CODEX_HOME"}):
+            out = _run_listing([exe, "debug", "models"], e)
+            rows = _parse_codex_models(out) if out else []
+            if entries := _entries(rows, provider):
+                return entries
+        return []
+    out = _run_listing([exe, "models"], env)
+    return _entries(_parse_agy_models(out), provider) if out else []
+
+
+def _configured_cli_path() -> str:
+    from ..config import load_config
+    return load_config()["provider"].get("cli_path", "")
+
+
+def list_models(provider: str) -> list[dict]:
+    """Selectable models for `provider` as [{id, label, note, recommended?}]."""
+    if provider not in EXECUTABLES:
+        raise ValueError(f"not a CLI provider: {provider!r}")
+    if provider not in MODEL_CACHE:
+        found = [] if provider == "claude_cli" else _lookup_models(provider)
+        MODEL_CACHE[provider] = found or _entries(_STATIC_MODELS[provider], provider)
+    # notes of the static lists are source-language text: render per request
+    return [{**e, "note": tr(e["note"])} for e in MODEL_CACHE[provider]]

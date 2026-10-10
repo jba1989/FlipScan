@@ -225,7 +225,11 @@ def _put(client, **over):
 
 def test_get_settings_reports_cli_fields(client, root):
     s = client.get("/api/settings", headers=AUTH).json()
-    assert s["cli_model"] == "" and s["cli_concurrency"] == 1
+    assert "cli_model" not in s
+    assert (s["codex_model"], s["codex_effort"]) == ("gpt-6-luna", "low")
+    assert s["claude_cli_model"] == "sonnet"
+    assert s["agy_model"] == "gemini-3.8-flash-low"
+    assert s["cli_concurrency"] == 1
     assert s["cli_timeout"] == 300
     assert s["codex_logged_in"] is False
     assert s["codex_login_cmd"].startswith("CODEX_HOME=")
@@ -241,8 +245,9 @@ def test_codex_logged_in_follows_auth_json(client, root):
 
 
 @pytest.mark.parametrize("over", [
-    {"cli_model": "--dangerously-skip-permissions"},
-    {"cli_model": "a b"},
+    {"codex_model": "--dangerously-skip-permissions"},
+    {"claude_cli_model": "a b"}, {"agy_model": "-x"},
+    {"codex_effort": "max"}, {"codex_effort": "low; x"},
     {"cli_concurrency": 0}, {"cli_concurrency": 5},
     {"cli_timeout": 59}, {"cli_timeout": 1801},
 ])
@@ -253,30 +258,52 @@ def test_put_rejects_bad_cli_values(client, over):
     assert client.get("/api/settings", headers=AUTH).json()["provider"] != "mock"
 
 
-def test_put_bad_cli_value_names_the_field(client):
-    assert "cli_model" in _put(client, cli_model="--x").json()["detail"]
+@pytest.mark.parametrize("field", ["codex_model", "claude_cli_model",
+                                   "agy_model", "codex_effort"])
+def test_put_bad_cli_value_names_the_field(client, field):
+    assert field in _put(client, **{field: "--x"}).json()["detail"]
 
 
 def test_put_persists_cli_values_and_keeps_the_rest(client, root):
     (root / "config.toml").write_text(
         '[provider]\ncli_path = "/opt/bin/claude"\ncli_retries = 4\n')
-    assert _put(client, cli_model="claude-sonnet-4-5", cli_concurrency=2,
-                cli_timeout=600).status_code == 200
+    assert _put(client, codex_model="gpt-6.1-sol", codex_effort="high",
+                claude_cli_model="opus", agy_model="gemini-3.8-flash-medium",
+                cli_concurrency=2, cli_timeout=600).status_code == 200
     s = client.get("/api/settings", headers=AUTH).json()
-    assert (s["cli_model"], s["cli_concurrency"], s["cli_timeout"]) == \
-        ("claude-sonnet-4-5", 2, 600)
+    assert (s["codex_model"], s["codex_effort"], s["claude_cli_model"],
+            s["agy_model"]) == ("gpt-6.1-sol", "high", "opus",
+                                "gemini-3.8-flash-medium")
+    assert (s["cli_concurrency"], s["cli_timeout"]) == (2, 600)
     text = (root / "config.toml").read_text()
     assert 'cli_path = "/opt/bin/claude"' in text and "cli_retries = 4" in text
+    assert 'codex_model = "gpt-6.1-sol"' in text and "\ncli_model" not in text
 
 
 def test_put_without_cli_fields_keeps_current(client):
-    _put(client, cli_model="gpt-5", cli_concurrency=3, cli_timeout=900)
+    _put(client, codex_model="gpt-5", agy_model="g", cli_concurrency=3,
+         cli_timeout=900)
     _put(client)
     s = client.get("/api/settings", headers=AUTH).json()
-    assert (s["cli_model"], s["cli_concurrency"], s["cli_timeout"]) == ("gpt-5", 3, 900)
+    assert (s["codex_model"], s["agy_model"], s["cli_concurrency"],
+            s["cli_timeout"]) == ("gpt-5", "g", 3, 900)
+    assert s["claude_cli_model"] == "sonnet"      # untouched default
 
 
-def test_put_empty_cli_model_clears_it(client):
-    _put(client, cli_model="gpt-5")
-    _put(client, cli_model="")
-    assert client.get("/api/settings", headers=AUTH).json()["cli_model"] == ""
+def test_put_empty_cli_model_reverts_to_default(client):
+    """save_global_config drops empty values, so "" falls back to the default."""
+    _put(client, claude_cli_model="opus")
+    _put(client, claude_cli_model="")
+    assert client.get("/api/settings", headers=AUTH).json()["claude_cli_model"] == "sonnet"
+
+
+def test_cli_models_endpoint_shape(client, monkeypatch):
+    import flipscan.ui as ui
+    monkeypatch.setattr(ui, "list_models", lambda p: [
+        {"id": f"{p}-m", "label": p.upper(), "note": "n", "recommended": True}])
+    r = client.get("/api/settings/cli-models", headers=AUTH)
+    assert r.status_code == 200
+    assert r.json() == {p: [{"id": f"{p}-m", "label": p.upper(), "note": "n",
+                             "recommended": True}]
+                        for p in ("codex", "claude_cli", "agy")}
+    assert client.get("/api/settings/cli-models").status_code == 401

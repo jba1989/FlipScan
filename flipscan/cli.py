@@ -92,9 +92,9 @@ def run(directory: Path, only_stage, force, provider, model, ollama_url):
     if ollama_url:
         cfg["provider"]["ollama_url"] = ollama_url
     if model:
-        key = {"anthropic": "anthropic_model", "codex": "cli_model",
-               "claude_cli": "cli_model", "agy": "cli_model"
-               }.get(cfg["provider"]["name"], "ollama_model")
+        name = cfg["provider"]["name"]
+        key = (f"{name}_model" if name in ("anthropic", "codex", "claude_cli", "agy")
+               else "ollama_model")
         cfg["provider"][key] = model
 
     from .project import run_pipeline

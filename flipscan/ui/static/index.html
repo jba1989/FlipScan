@@ -350,7 +350,13 @@ function providerLabel(p) {
 const providerOption = (p, sel) =>
   `<option value="${p}" ${p === sel ? "selected" : ""}>${providerLabel(p)}</option>`;
 
-// one status line per subscription CLI
+// one status line per subscription CLI, with its model dropdown. The <select>
+// starts with just the stored value (so saving before the list arrives keeps
+// it); loadCliModels() fills it in.
+const CLI_EFFORTS = ["low", "medium", "high", "xhigh"];
+const cliOption = (v, text, sel) =>
+  `<option value="${esc(v)}" ${v === sel ? "selected" : ""}>${esc(text)}</option>`;
+
 function cliStatusRow(name, s) {
   const ok = (s.cli_available || {})[name];
   const inst = ok ? t('<span class="badge ok">已安裝</span>')
@@ -360,17 +366,25 @@ function cliStatusRow(name, s) {
     login = s.codex_logged_in ? t('<span class="badge ok">已登入</span>')
       : T`<span class="badge acceptable">尚未登入</span> 請在終端機執行一次：<code style="word-break:break-all">${esc(s.codex_login_cmd)}</code>`;
   }
+  const cur = s[name + "_model"] || "";
+  const effort = name !== "codex" ? "" : `
+      <label style="margin:0">${t("推理強度")}</label>
+      <select id="set-effort-codex" style="width:auto;margin:0">${
+        [...new Set([...CLI_EFFORTS, s.codex_effort || "low"])]
+          .map(e => cliOption(e, e, s.codex_effort || "low")).join("")}</select>`;
   return `<div class="meta" style="margin:.2rem 0"><b>${providerLabel(name)}</b>
-    ${inst} · ${login}</div>`;
+    ${inst} · ${login}</div>
+    <div class="row" style="flex-wrap:wrap;align-items:center;margin:0 0 .6rem">
+      <label style="margin:0">${t("模型")}</label>
+      <select id="set-model-${name}" style="width:auto;max-width:100%;margin:0">${
+        cliOption(cur, cur || t("CLI 預設模型"), cur)}</select>${effort}
+    </div>`;
 }
 
 function cliSettingsCard(s) {
   return T`<hr style="border:0;border-top:1px solid var(--line);margin:.9rem 0">
     <label>訂閱 CLI（使用 ChatGPT / Claude / Antigravity 訂閱額度）</label>
     ${["codex", "claude_cli", "agy"].map(n => cliStatusRow(n, s)).join("")}
-    <label>模型 <span class="meta">（cli_model）</span></label>
-    <input id="set-climodel" value="${esc(s.cli_model || "")}" maxlength="80"
-           placeholder="${t("留空 = 使用 CLI 預設模型")}">
     <div class="row" style="flex-wrap:wrap">
       <div><label>同時處理頁數 <span class="meta">（1–4）</span></label>
         <input id="set-cliconc" type="number" min="1" max="4" step="1"
@@ -380,7 +394,25 @@ function cliSettingsCard(s) {
                value="${s.cli_timeout}" style="width:6rem"></div>
     </div>
     <div class="meta" style="margin:.3rem 0 .6rem">${t("⚠ codex / claude_cli / agy 會使用本機已登入的訂閱 CLI：頁面圖片會傳送至該服務，並消耗訂閱額度。")}
-      ${t("實測 claude_cli 最快也最準（約 15 秒／頁），codex 約 20–40 秒，agy 約 80 秒，且 agy 會從暫存檔讀取圖片。")}</div>`;
+      ${t("預設模型皆已選擇最便宜且品質足夠的：實測 claude_cli sonnet 約 7 秒／頁，codex gpt-6-luna 約 9 秒，agy flash-low 約 13 秒；agy 會從暫存檔讀取圖片。")}</div>`;
+}
+
+// fill each model <select> from the CLIs' own lists (slow: runs `codex debug
+// models` / `agy models`); the stored value stays selected, even if unlisted
+async function loadCliModels(s) {
+  let r;
+  try { r = await api("/settings/cli-models"); }
+  catch (e) { console.warn("model lists unavailable:", e); return; }   // keep the stored values
+  for (const name of ["codex", "claude_cli", "agy"]) {
+    const sel = $("set-model-" + name);
+    if (!sel || !(r[name] || []).length) continue;
+    const cur = sel.value;
+    const items = r[name].map(m => cliOption(m.id,
+      m.label + (m.note ? " — " + m.note : "")
+        + (m.recommended ? " " + t("（建議：最便宜且品質足夠）") : ""), cur));
+    if (cur && !r[name].some(m => m.id === cur)) items.push(cliOption(cur, cur, cur));
+    sel.innerHTML = items.join("");
+  }
 }
 
 async function showSettings() {
@@ -447,6 +479,7 @@ async function showSettings() {
     <span class="meta" id="settings-status" style="margin-left:.6rem"></span>
   </div>`;
   testOllama();
+  loadCliModels(s);
 }
 async function testOllama() {
   const st = $("ollama-status");
@@ -481,7 +514,10 @@ async function saveSettings() {
       openai_model: $("set-oaimodel").value,
       openai_api_key: $("set-oaikey").value,
       escalate_to: $("set-escto").value,
-      cli_model: $("set-climodel").value.trim(),
+      codex_model: $("set-model-codex").value,
+      codex_effort: $("set-effort-codex").value,
+      claude_cli_model: $("set-model-claude_cli").value,
+      agy_model: $("set-model-agy").value,
       cli_concurrency: parseInt($("set-cliconc").value, 10),
       cli_timeout: parseInt($("set-clitimeout").value, 10),
     })});
