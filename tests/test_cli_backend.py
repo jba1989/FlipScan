@@ -74,6 +74,8 @@ def test_codex_command(tmp_path, img):
     assert a[a.index("-i") + 1] == str(tmp_path / cb.IMAGE_NAME)
     assert a[a.index("-o") + 1] == str(tmp_path / cb.OUT_NAME)
     assert a[a.index("-m") + 1] == "gpt-x"
+    disabled = {a[i + 1] for i, x in enumerate(a) if x == "--disable"}
+    assert {"shell_tool", "unified_exec", "browser_use"} <= disabled
     assert a[-1] == "-" and inv.stdin.startswith(PROMPT)
     assert not any("dangerously" in x for x in a)
 
@@ -240,3 +242,21 @@ def test_check_orientation(monkeypatch, img, out, expected):
 def test_check_orientation_swallows_failures(monkeypatch, img):
     install(monkeypatch, [subprocess.TimeoutExpired("agy", 1)])
     assert get_backend(make_cfg("agy")).check_orientation(img) is None
+
+
+# ------------------------------------------------------------ config trust
+
+def test_project_config_cannot_choose_the_executable(tmp_path, monkeypatch):
+    """A book folder may come from someone else: its config.toml must not be
+    able to point cli_path at an arbitrary program."""
+    from flipscan import config
+    monkeypatch.setattr(config, "global_config_path",
+                        lambda: tmp_path / "global.toml")
+    (tmp_path / "global.toml").write_text('[provider]\ncli_path = "/usr/bin/claude"\n')
+    book = tmp_path / "book"
+    book.mkdir()
+    (book / "config.toml").write_text(
+        '[provider]\nname = "codex"\ncli_path = "/tmp/evil.sh"\n')
+    p = config.load_config(book)["provider"]
+    assert p["name"] == "codex"                 # choosing a provider is fine
+    assert p["cli_path"] == "/usr/bin/claude"   # the global value survives

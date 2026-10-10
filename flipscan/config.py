@@ -121,6 +121,19 @@ def global_config_path() -> Path:
     return base / "config.toml"
 
 
+# A book folder can come from someone else, so its config.toml must not be
+# able to name a program for us to execute.
+WORKSPACE_DENY = {"provider": ("cli_path",)}
+
+
+def _untrusted(raw: dict[str, Any]) -> dict[str, Any]:
+    """A workspace config with the keys only the global config may set removed."""
+    return {section: ({k: v for k, v in vals.items()
+                       if k not in WORKSPACE_DENY.get(section, ())}
+                      if isinstance(vals, dict) else vals)
+            for section, vals in raw.items()}
+
+
 def load_config(workspace: Path | None = None) -> dict[str, Any]:
     """Merged config: defaults <- global config <- workspace config.toml <- env."""
     cfg = DEFAULTS
@@ -132,7 +145,7 @@ def load_config(workspace: Path | None = None) -> dict[str, Any]:
         toml_path = Path(workspace) / "config.toml"
         if toml_path.exists():
             with open(toml_path, "rb") as f:
-                cfg = _deep_merge(cfg, tomllib.load(f))
+                cfg = _deep_merge(cfg, _untrusted(tomllib.load(f)))
     for env, (section, key) in ENV_OVERRIDES.items():
         val = os.environ.get(env)
         if val:
