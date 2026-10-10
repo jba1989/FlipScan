@@ -551,3 +551,14 @@ def test_llm_copy_still_downscales_large_frames():
     from flipscan.stages.preprocess import llm_copy
     out = llm_copy(np.full((2160, 3840, 3), 200, np.uint8), 1600)
     assert out.shape == (900, 1600)
+
+
+# ---------------- transcription prompt
+
+def test_prompt_pins_the_printed_script():
+    # gemma4 drifted into Simplified on a Traditional book (这/们/发 for 這/們/發);
+    # the rule is stated in English AND Chinese — the English one alone left
+    # whole pages Simplified
+    from flipscan.backends import PROMPT
+    assert "never convert it to Simplified" in PROMPT
+    assert "繁體中文" in PROMPT and "絕對不可以轉成簡體字" in PROMPT

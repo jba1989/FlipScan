@@ -33,6 +33,13 @@ Rules:
 - "markdown": transcribe the body text faithfully. Use # / ## for chapter/section headings
   that appear on the page. OMIT running headers, running footers, and the printed page
   number from the markdown.
+- Copy every character EXACTLY as printed, in the page's own script and language:
+  Traditional Chinese stays Traditional Chinese — never convert it to Simplified (and
+  Simplified stays Simplified). Never translate, paraphrase, summarize, or reword; if a
+  character is hard to read, give your best reading of THAT character rather than
+  substituting different words.
+- 若原書是繁體中文：markdown 必須逐字照印刷的繁體字輸出（例如「這、們、發、問題、當天、開盤」），
+  絕對不可以轉成簡體字（不可寫成「这、们、发、问题、当天、开盘」）。
 - REFLOW the text into flowing paragraphs. Within a paragraph, join the printed
   line-wraps into ONE continuous line — do NOT preserve the physical line breaks of the
   printed page. Start a new line only for a genuine paragraph break, heading, or list
