@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .build_pdf import PAGE_GEOMETRY_MM
 from .workspace import Workspace
+from .i18n import tr
 
 # e-ink typography niceties layered on top of pandoc's default LaTeX template:
 # optical margins, block paragraphs, no widows/orphans, looser tolerance for a
@@ -70,7 +71,7 @@ def latex_tools_available() -> bool:
 def _require(tool: str, hint: str) -> str:
     path = _find_tool(tool)
     if not path:
-        raise RuntimeError(f"找不到 {tool} — {hint}")
+        raise RuntimeError(tr("找不到 {0} — {1}", tool, hint))
     return path
 
 
@@ -80,14 +81,14 @@ def build_pdf_latex(ws: Workspace, out_path: Path, title: str | None = None,
     """Render work/book.md to a PDF via pandoc + xelatex. Raises RuntimeError
     (with an install hint) if the tools are missing, or with the tail of the
     LaTeX log if the compile fails."""
-    pandoc = _require("pandoc", "請安裝 pandoc (https://pandoc.org/installing.html)")
-    xelatex = _require("xelatex", "請安裝包含 XeLaTeX 的 TeX 發行版 — "
-                       "Debian/Ubuntu 上請安裝 texlive-xetex + texlive-fonts-recommended，"
-                       "或安裝 MiKTeX (Windows) / MacTeX (macOS)")
+    pandoc = _require("pandoc", tr("請安裝 pandoc (https://pandoc.org/installing.html)"))
+    xelatex = _require("xelatex", tr("請安裝包含 XeLaTeX 的 TeX 發行版 — D"
+                       "ebian/Ubuntu 上請安裝 texlive-xetex + texlive-fonts-recommended，"
+                       "或安裝 MiKTeX (Windows) / MacTeX (macOS)"))
 
     book_md = ws.work_file("book.md")
     if not book_md.exists():
-        raise RuntimeError("找不到 work/book.md — 請先執行處理流程 (assemble)")
+        raise RuntimeError(tr("找不到 work/book.md — 請先執行處理流程 (assemble)"))
 
     geo = PAGE_GEOMETRY_MM.get(device)
     if geo:
@@ -132,7 +133,7 @@ def build_pdf_latex(ws: Workspace, out_path: Path, title: str | None = None,
 
     if r.returncode != 0:
         tail = "\n".join((r.stderr or r.stdout or "").strip().splitlines()[-10:])
-        raise RuntimeError("pandoc/xelatex 執行失敗：\n" + tail)
-    log(f"LaTeX PDF 已寫入：{out_path}"
+        raise RuntimeError(tr("pandoc/xelatex 執行失敗：\n") + tail)
+    log(tr("LaTeX PDF 已寫入：{0}", out_path)
         + (f" ({device})" if geo else ""))
     return out_path

@@ -7,6 +7,7 @@ import numpy as np
 
 from ..workspace import Workspace
 from .score import scores_by_frame_id
+from ..i18n import tr
 
 
 def composite(rec: dict, norms: dict, w: dict) -> float:
@@ -100,8 +101,8 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
 
     ws.save()
     sheet = contact_sheet(ws)
-    log(f"  已為 {len(ws.manifest['pages'])} 個頁面選取代表影格")
-    log(f"  聯絡印樣：{sheet}")
+    log(tr("  已為 {0} 個頁面選取代表影格", len(ws.manifest['pages'])))
+    log(tr("  聯絡印樣：{0}", sheet))
     ws.stage_done("select")
 
 
@@ -161,7 +162,7 @@ def split_spreads(ws: Workspace, cfg: dict, log=print) -> int:
         n += 1
     ws.manifest["pages"] = out
     if n:
-        log(f"  已將 {n} 個跨頁分割為左/右頁面")
+        log(tr("  已將 {0} 個跨頁分割為左/右頁面", n))
     return n
 
 

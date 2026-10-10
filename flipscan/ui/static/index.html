@@ -4,13 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>FlipScan</title>
+<script src="/static/i18n.en.js"></script>
+<script src="/static/i18n.js"></script>
 <style>
   :root { --bg:#f5f5f4; --panel:#fff; --line:#e7e5e4; --ink:#1c1917; --dim:#78716c;
           --accent:#0d9488; --bad:#dc2626; }
   * { box-sizing: border-box; }
   body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink);
          display:grid; grid-template-columns: 260px 1fr; height:100vh; }
-  aside { background:#292524; color:#fafaf9; padding:1rem; overflow-y:auto; }
+  aside { background:#292524; color:#fafaf9; padding:1rem; overflow-y:auto;
+          display:flex; flex-direction:column; }
+  /* projects fill the sidebar; the language picker sits on its own row at the bottom */
+  #nav-drawer { flex:1; display:flex; flex-direction:column; }
+  #lang-pick { margin-top:auto; padding-top:1rem; }
   aside h1 { font-size:1.1rem; margin:0 0 1rem; }
   .proj { padding:.5rem .7rem; border-radius:6px; cursor:pointer; margin-bottom:.25rem;
           font-size:.9rem; }
@@ -85,7 +91,7 @@
     .row input[type="file"] { width:100%; }
     .row select { max-width:100%; }
     body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-    aside { display:flex; align-items:center; gap:.6rem; padding:.55rem .8rem;
+    aside { display:flex; flex-direction:row; align-items:center; gap:.6rem; padding:.55rem .8rem;
             white-space:nowrap; overflow:visible; position:relative; }
     aside h1 { margin:0; font-size:1rem; flex:none; }
     #burger { display:inline-block; }
@@ -159,9 +165,10 @@
   <div id="nav-drawer">
     <div id="projects"></div>
     <div style="margin-top:1rem; display:flex; gap:.4rem">
-      <button class="secondary" onclick="showNew()">+ 新增專案</button>
+      <button class="secondary" style="flex:1" onclick="showNew()">+ 新增專案</button>
       <button class="secondary" onclick="showSettings()" title="設定">⚙</button>
     </div>
+    <div id="lang-pick"></div>
   </div>
 </aside>
 <main id="main"><div class="card">選取或建立專案。</div></main>
@@ -183,32 +190,35 @@
 <script>
 let current = null;
 const $ = (id) => document.getElementById(id);
+I18N.translateStatic();
+I18N.reportToServer();
+$("lang-pick").innerHTML = I18N.picker();
 
 // display names for keys the server sends as-is (stage / page / job status);
 // the keys themselves stay English — code compares against them
 const LABELS = {
-  extract: "抽取影格", score: "評分", cluster: "分頁分群", select: "挑選最佳影格",
-  preprocess: "影像前處理", transcribe: "文字辨識", figures: "擷取圖表", assemble: "組裝成書",
-  ok: "正常", suspect: "可疑", duplicate: "重複", deleted: "已隱藏", patched: "已補拍",
-  high: "高", medium: "中", low: "低",
-  cover: "封面", queued: "排隊中", running: "執行中", done: "完成", error: "錯誤",
-  canceled: "已取消", pending: "未執行",
-  "pages transcribed": "頁已辨識", "pages corrected": "頁已校正", videos: "部影片",
+  extract: t("抽取影格"), score: t("評分"), cluster: t("分頁分群"), select: t("挑選最佳影格"),
+  preprocess: t("影像前處理"), transcribe: t("文字辨識"), figures: t("擷取圖表"), assemble: t("組裝成書"),
+  ok: t("正常"), suspect: t("可疑"), duplicate: t("重複"), deleted: t("已隱藏"), patched: t("已補拍"),
+  high: t("高"), medium: t("中"), low: t("低"),
+  cover: t("封面"), queued: t("排隊中"), running: t("執行中"), done: t("完成"), error: t("錯誤"),
+  canceled: t("已取消"), pending: t("未執行"),
+  "pages transcribed": t("頁已辨識"), "pages corrected": t("頁已校正"), videos: t("部影片"),
 };
 const STAGE_HELP = {
-  extract: "把影片的每一格存成圖片",
-  score: "替每一格打分數：清晰度、平整度、手指遮擋、晃動",
-  cluster: "依翻頁動作把連續影格分成一頁一頁",
-  select: "每一頁挑出最清楚的一格（開啟跨頁切分時在這裡切成左右兩頁）",
-  preprocess: "裁出書頁、透視校正，產生給模型看的圖",
-  transcribe: "用視覺模型把頁面辨識成文字",
-  figures: "把頁面上的圖表裁切出來並提升畫質",
-  assemble: "把所有頁面的文字與圖表組成整本書",
+  extract: t("把影片的每一格存成圖片"),
+  score: t("替每一格打分數：清晰度、平整度、手指遮擋、晃動"),
+  cluster: t("依翻頁動作把連續影格分成一頁一頁"),
+  select: t("每一頁挑出最清楚的一格（開啟跨頁切分時在這裡切成左右兩頁）"),
+  preprocess: t("裁出書頁、透視校正，產生給模型看的圖"),
+  transcribe: t("用視覺模型把頁面辨識成文字"),
+  figures: t("把頁面上的圖表裁切出來並提升畫質"),
+  assemble: t("把所有頁面的文字與圖表組成整本書"),
 };
 const lbl = (k) => LABELS[k] || k;
 const TAB_LABELS = {
-  pipeline: "處理流程", media: "媒體", frames: "影格", contents: "目錄", pages: "頁面",
-  figures: "圖表", proof: "校對", output: "輸出",
+  pipeline: t("處理流程"), media: t("媒體"), frames: t("影格"), contents: t("目錄"), pages: t("頁面"),
+  figures: t("圖表"), proof: t("校對"), output: t("輸出"),
 };
 
 // ---- self-updating app shell: when the server serves newer code, reload —
@@ -245,15 +255,15 @@ function toggleArchived() {
 async function refreshProjects() {
   const list = await api("/projects");
   const active = list.filter(p => !p.archived), archived = list.filter(p => p.archived);
-  const row = (p) => `
+  const row = (p) => T`
     <div class="proj ${p.name === current ? "active" : ""}" onclick="openProject('${p.name}')">
       <div>${esc(p.title || p.name)} ${p.running ? "⏳" : ""}</div>
       <div class="sub">${p.pages} 頁 · ${p.suspects} 頁可疑</div>
     </div>`;
   let html = active.map(row).join("")
-    || '<div class="sub" style="color:#a8a29e">沒有進行中的專案</div>';
+    || t('<div class="sub" style="color:#a8a29e">沒有進行中的專案</div>');
   if (archived.length) {
-    html += `<div onclick="toggleArchived()" style="cursor:pointer;font-size:.72rem;
+    html += T`<div onclick="toggleArchived()" style="cursor:pointer;font-size:.72rem;
         color:#a8a29e;margin-top:.9rem;padding:.35rem 0;border-top:1px solid #44403c">
         <span id="arch-caret">${archivedOpen ? "▾" : "▸"}</span> 已封存 (${archived.length})</div>
       <div id="arch-list" style="display:${archivedOpen ? "block" : "none"};opacity:.75">
@@ -279,7 +289,7 @@ function showNew() {
   current = null;
   closeNav();
   npMeta = {};
-  $("main").innerHTML = `
+  $("main").innerHTML = T`
   <div class="card">
     <h2>新增專案</h2>
     <label>尋找書籍 <span class="meta">— ISBN、書名或作者（自動填入其餘欄位）</span></label>
@@ -303,12 +313,12 @@ function showNew() {
 async function lookupBook() {
   const q = $("np-lookup").value.trim();
   const box = $("np-results");
-  if (q.length < 3) { box.innerHTML = "<div class='meta'>請輸入書名、作者或 ISBN</div>"; return; }
-  box.innerHTML = "<div class='meta'>搜尋中…</div>";
+  if (q.length < 3) { box.innerHTML = t("<div class='meta'>請輸入書名、作者或 ISBN</div>"); return; }
+  box.innerHTML = t("<div class='meta'>搜尋中…</div>");
   let r;
   try { r = await api("/lookup?q=" + encodeURIComponent(q)); }
-  catch (e) { box.innerHTML = `<div class='meta'>查詢失敗：${esc(e.message)}</div>`; return; }
-  if (!r.results.length) { box.innerHTML = "<div class='meta'>找不到相符項目 — 請手動填寫欄位</div>"; return; }
+  catch (e) { box.innerHTML = T`<div class='meta'>查詢失敗：${esc(e.message)}</div>`; return; }
+  if (!r.results.length) { box.innerHTML = t("<div class='meta'>找不到相符項目 — 請手動填寫欄位</div>"); return; }
   box.innerHTML = r.results.map((b, i) => `
     <div class="row" style="border:1px solid var(--line);border-radius:6px;
          padding:.4rem .6rem;margin:.25rem 0;cursor:pointer" onclick='pickBook(${i})'>
@@ -329,14 +339,14 @@ function pickBook(i) {
   npMeta = {isbn: b.isbn || null, publisher: b.publisher || null, year: b.year || null};
   $("np-extra").textContent = [b.publisher, b.year, b.isbn && "ISBN " + b.isbn]
     .filter(Boolean).join(" · ");
-  $("np-results").innerHTML = "<div class='meta'>✓ 已帶入「" + esc(b.title) + "」</div>";
+  $("np-results").innerHTML = t("<div class='meta'>✓ 已帶入「") + esc(b.title) + t("」</div>");
 }
 
 async function showSettings() {
   current = null;
   closeNav();
   const s = await api("/settings");
-  $("main").innerHTML = `
+  $("main").innerHTML = T`
   <div class="card">
     <h2>設定 <span class="meta">（套用至所有專案）</span></h2>
     <label>辨識服務提供者</label>
@@ -357,9 +367,9 @@ async function showSettings() {
     <label>Anthropic 模型</label>
     <input id="set-amodel" value="${esc(s.anthropic_model)}">
     <label>Anthropic API key ${s.anthropic_api_key_set
-      ? '<span class="badge ok">已設定</span>' : "（使用 anthropic / hybrid 時需要）"}</label>
+      ? t('<span class="badge ok">已設定</span>') : t("（使用 anthropic / hybrid 時需要）")}</label>
     <input id="set-akey" type="password"
-           placeholder="${s.anthropic_api_key_set ? "保留空白以維持目前金鑰" : "sk-ant-…"}">
+           placeholder="${s.anthropic_api_key_set ? t("保留空白以維持目前金鑰") : "sk-ant-…"}">
     <label style="display:flex;align-items:center;gap:.4rem;margin:.2rem 0 .6rem">
       <input type="checkbox" id="set-aenabled" style="width:auto;margin:0"
              ${s.anthropic_enabled ? "checked" : ""}>
@@ -379,15 +389,15 @@ async function showSettings() {
     <input id="set-oaimodel" value="${esc(s.openai_model || '')}"
            placeholder="gpt-4o · gemini-2.0-flash · openai/gpt-4o …">
     <label>API key ${s.openai_api_key_set
-      ? '<span class="badge ok">已設定</span>' : "（供 openai 服務提供者使用）"}</label>
+      ? t('<span class="badge ok">已設定</span>') : t("（供 openai 服務提供者使用）")}</label>
     <input id="set-oaikey" type="password"
-           placeholder="${s.openai_api_key_set ? "保留空白以維持目前金鑰"
-             : "OpenAI / OpenRouter / Gemini 金鑰"}">
+           placeholder="${s.openai_api_key_set ? t("保留空白以維持目前金鑰")
+             : t("OpenAI / OpenRouter / Gemini 金鑰")}">
     <div class="meta" style="margin:.3rem 0 .6rem">⚠ openai 服務提供者會將每一頁的圖片傳送至該服務（與本地端 Ollama 不同）。</div>
     <label>當 hybrid 升級時，將低信心度頁面傳送至</label>
     <select id="set-escto" style="width:auto">
-      ${["anthropic","openai"].map(t =>
-        `<option ${t === s.escalate_to ? "selected" : ""}>${t}</option>`).join("")}
+      ${["anthropic","openai"].map(v =>
+        `<option ${v === s.escalate_to ? "selected" : ""}>${v}</option>`).join("")}
     </select>
     <div class="meta" style="margin:.6rem 0">儲存於本機專案資料夾中的
       config.toml。Hybrid 模式會先在本地進行辨識，僅在頁面被標記時才傳送至所選的雲端服務提供者。</div>
@@ -398,14 +408,14 @@ async function showSettings() {
 }
 async function testOllama() {
   const st = $("ollama-status");
-  st.textContent = "正在檢查 Ollama 伺服器…";
+  st.textContent = t("正在檢查 Ollama 伺服器…");
   const r = await api("/settings/ollama-models?url=" +
                       encodeURIComponent($("set-ourl").value));
   if (r.ok) {
-    st.textContent = `✓ 已連線 — 有 ${r.models.length} 個可用模型`;
+    st.textContent = T`✓ 已連線 — 有 ${r.models.length} 個可用模型`;
     $("omodel-list").innerHTML = r.models.map(m => `<option value="${m}">`).join("");
   } else {
-    st.textContent = "✗ 無法連線至伺服器：" + r.error;
+    st.textContent = t("✗ 無法連線至伺服器：") + r.error;
   }
 }
 
@@ -429,7 +439,7 @@ async function saveSettings() {
       openai_api_key: $("set-oaikey").value,
       escalate_to: $("set-escto").value,
     })});
-  $("settings-status").textContent = "已儲存 ✓";
+  $("settings-status").textContent = t("已儲存 ✓");
   setTimeout(() => $("settings-status").textContent = "", 2500);
 }
 
@@ -445,14 +455,14 @@ function uploadXHR(url, fd, onProgress) {
     x.onload = () => x.status < 300
       ? resolve(JSON.parse(x.responseText))
       : reject(new Error(x.responseText || x.statusText));
-    x.onerror = () => reject(new Error("上傳時發生網路錯誤"));
+    x.onerror = () => reject(new Error(t("上傳時發生網路錯誤")));
     x.send(fd);
   });
 }
 
 async function createProject() {
   const title = $("np-title").value.trim();
-  if (!title) { alert("請輸入書籍名稱。"); return; }
+  if (!title) { alert(t("請輸入書籍名稱。")); return; }
   try {
     const r = await api("/projects", {method:"POST", headers:{"Content-Type":"application/json"},
       body: JSON.stringify({
@@ -474,19 +484,19 @@ function jobsModalOpen() {
   const m = $("jobs-modal"); return m && m.style.display === "flex";
 }
 function prettyJob(j) {
-  const base = j.label || ({pipeline: "執行處理流程", "proof-chapter": "校對",
-    "proof-resolve": "重新辨識段落", "proof-reread-stuck": "重新辨識卡住項目",
-    "retry-ocr": "重試 OCR", "pdf-import": "PDF 匯入",
-    "video-import": "影片匯入", "epub-import": "EPUB 匯入", audiobook: "製作有聲書",
-    "cast-analysis": "分析角色", "tts-preview": "聲音預覽", "voice-gen": "產生聲音",
-    "voice-gen-all": "產生所有缺少的聲音"}[j.kind] || j.kind);
+  const base = j.label || ({pipeline: t("執行處理流程"), "proof-chapter": t("校對"),
+    "proof-resolve": t("重新辨識段落"), "proof-reread-stuck": t("重新辨識卡住項目"),
+    "retry-ocr": t("重試 OCR"), "pdf-import": t("PDF 匯入"),
+    "video-import": t("影片匯入"), "epub-import": t("EPUB 匯入"), audiobook: t("製作有聲書"),
+    "cast-analysis": t("分析角色"), "tts-preview": t("聲音預覽"), "voice-gen": t("產生聲音"),
+    "voice-gen-all": t("產生所有缺少的聲音")}[j.kind] || j.kind);
   // the queue is global (all books), so name the book
   return j.project ? `${j.project} · ${base}` : base;
 }
 function jobElapsed(startedAt) {
   if (!startedAt) return "";
   const s = Math.max(0, Math.round(Date.now() / 1000 - startedAt));
-  return s < 90 ? `${s} 秒` : `${Math.floor(s / 60)} 分 ${s % 60} 秒`;
+  return s < 90 ? T`${s} 秒` : T`${Math.floor(s / 60)} 分 ${s % 60} 秒`;
 }
 function updateJobsChip(jobs) {
   const chip = $("jobs-chip"); if (!chip) return;
@@ -495,10 +505,10 @@ function updateJobsChip(jobs) {
   if (!running.length && !queued.length) { chip.style.display = "none"; return; }
   chip.style.display = "block";
   // several jobs can run at once (tts / proof / import lanes are independent)
-  const label = running.length > 1 ? `${running.length} 個執行中`
-    : running.length ? esc(prettyJob(running[0])) : "啟動中…";
+  const label = running.length > 1 ? T`${running.length} 個執行中`
+    : running.length ? esc(prettyJob(running[0])) : t("啟動中…");
   chip.innerHTML = `<span class="spin">⚙</span> ${label}`
-    + (queued.length ? ` · +${queued.length} 排隊中` : "");
+    + (queued.length ? T` · +${queued.length} 排隊中` : "");
 }
 // one global poller for the whole queue (all books) — never reset on switch
 function startJobsPolling() {
@@ -537,12 +547,12 @@ async function renderJobsModal(jobs) {
   // narrating while a cast analysis or proofread runs is normal)
   let runHtml = "";
   for (const j of running) {
-    let tail = "處理中…";
+    let tail = t("處理中…");
     try {
       const { logs } = await api(`/jobs/${j.id}/logs`);
       if (logs && logs.length) tail = logs.slice(-10).map(l => esc(l.line)).join("\n");
     } catch {}
-    runHtml += `<div class="card" style="border:2px solid var(--accent)">
+    runHtml += T`<div class="card" style="border:2px solid var(--accent)">
       <div class="row" style="align-items:center">
         <span class="spin">⚙</span> <b>${esc(prettyJob(j))}</b>
         <span class="meta" style="margin:0">已執行 ${jobElapsed(j.started_at)}</span>
@@ -553,20 +563,20 @@ async function renderJobsModal(jobs) {
         padding:.5rem;border-radius:6px;font-size:.72rem;white-space:pre-wrap;
         margin:.5rem 0 0">${tail}</pre></div>`;
   }
-  const queuedHtml = queued.length ? `<div class="card">
+  const queuedHtml = queued.length ? T`<div class="card">
     <b>排隊中 (${queued.length})</b>
     <ol style="margin:.3rem 0 0;padding-left:1.3rem">${queued.map(j =>
       `<li style="margin:.2rem 0">${esc(prettyJob(j))}
         <button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
           onclick="cancelJob(${j.id})">✕</button></li>`).join("")}</ol></div>` : "";
-  const recentHtml = `<div class="card"><b>最近工作</b>${recent.length
+  const recentHtml = T`<div class="card"><b>最近工作</b>${recent.length
     ? `<ul style="margin:.3rem 0 0;padding-left:1.1rem;list-style:none">${recent.map(j =>
         `<li style="margin:.2rem 0">${icon[j.status] || ""} ${esc(prettyJob(j))}
           <span class="meta" style="margin:0">— ${lbl(j.status)}${
-            j.error ? "：" + esc(j.error.slice(0, 70)) : ""}</span></li>`).join("")}</ul>`
-    : `<div class="meta">尚無已完成的工作</div>`}</div>`;
+            j.error ? t("：") + esc(j.error.slice(0, 70)) : ""}</span></li>`).join("")}</ul>`
+    : T`<div class="meta">尚無已完成的工作</div>`}</div>`;
   box.innerHTML = (runHtml || (queued.length ? ""
-    : `<div class="card"><div class="meta">目前沒有正在執行的工作。</div></div>`))
+    : T`<div class="card"><div class="meta">目前沒有正在執行的工作。</div></div>`))
     + queuedHtml + recentHtml;
 }
 async function cancelJob(id) {
@@ -578,37 +588,37 @@ async function cancelJob(id) {
 }
 
 async function deleteProject(name) {
-  if (!confirm(`確定要刪除專案「${name}」及其所有的影片、影格、`
-             + `頁面與產出嗎？\n\n此動作無法還原。`)) return;
-  const typed = prompt(`此動作為永久刪除。請完整輸入專案名稱以確認：\n\n${name}`);
+  if (!confirm(T`確定要刪除專案「${name}」及其所有的影片、影格、`
+             + T`頁面與產出嗎？\n\n此動作無法還原。`)) return;
+  const typed = prompt(T`此動作為永久刪除。請完整輸入專案名稱以確認：\n\n${name}`);
   if (typed === null) return;
-  if (typed !== name) { alert("名稱不符合 — 未刪除任何項目。"); return; }
+  if (typed !== name) { alert(t("名稱不符合 — 未刪除任何項目。")); return; }
   try {
     await api(`/projects/${encodeURIComponent(name)}?confirm=`
               + encodeURIComponent(name), {method: "DELETE"});
-  } catch (e) { alert("刪除失敗：" + e.message); return; }
+  } catch (e) { alert(t("刪除失敗：") + e.message); return; }
   current = null;
   location.hash = "";
   await refreshProjects();
-  $("main").innerHTML = `<div class="card">專案「${esc(name)}」已刪除。</div>`;
+  $("main").innerHTML = T`<div class="card">專案「${esc(name)}」已刪除。</div>`;
 }
 
 async function archiveProject(name, on) {
   try {
     await api(`/projects/${encodeURIComponent(name)}/archive?on=${on}`, {method: "POST"});
-  } catch (e) { alert("失敗：" + e.message); return; }
+  } catch (e) { alert(t("失敗：") + e.message); return; }
   if (on) archivedOpen = true;   // reveal the group so the move is visible
   await refreshProjects();
   openProject(name);             // re-render the header with the new state
 }
 
 async function fillFromIsbn(isbn, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "查詢中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("查詢中…"); }
   let r;
   try { r = await api("/lookup?q=" + encodeURIComponent(isbn)); }
-  catch (e) { alert("查詢失敗：" + e.message); return; }
+  catch (e) { alert(t("查詢失敗：") + e.message); return; }
   const b = (r.results || [])[0];
-  if (!b) { alert("找不到 ISBN " + isbn + " 的書籍資訊 — 請手動輸入 (✎)。"); return; }
+  if (!b) { alert(t("找不到 ISBN ") + isbn + t(" 的書籍資訊 — 請手動輸入 (✎)。")); return; }
   // only fill fields that are currently EMPTY — never clobber good existing
   // data (title/pages the user or OCR already have)
   const cur = window._proj?.book || {};
@@ -620,18 +630,18 @@ async function fillFromIsbn(isbn, btn) {
     publisher: cur.publisher || b.publisher || null,
     year: cur.year || b.year || null,
   };
-  if (!confirm(`是否使用 ISBN ${b.isbn || isbn} 填入空白的書籍詳細資訊：\n\n` +
-      `書名：     ${merged.title || "—"}\n` +
-      `作者：     ${merged.author || "—"}\n` +
-      `頁數：     ${merged.expected_pages || "—"}\n` +
-      `出版社：   ${merged.publisher || "—"}\n` +
-      `出版年份： ${merged.year || "—"}\n\n` +
-      `（既有內容將會保留；您可以隨時點選 ✎ 進行修改。）`)) return;
+  if (!confirm(T`是否使用 ISBN ${b.isbn || isbn} 填入空白的書籍詳細資訊：\n\n` +
+      T`書名：     ${merged.title || "—"}\n` +
+      T`作者：     ${merged.author || "—"}\n` +
+      T`頁數：     ${merged.expected_pages || "—"}\n` +
+      T`出版社：   ${merged.publisher || "—"}\n` +
+      T`出版年份： ${merged.year || "—"}\n\n` +
+      T`（既有內容將會保留；您可以隨時點選 ✎ 進行修改。）`)) return;
   try {
     await api("/projects/" + current, {method: "PATCH",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(merged)});
-  } catch (e) { alert("儲存失敗：" + e.message); return; }
+  } catch (e) { alert(t("儲存失敗：") + e.message); return; }
   refreshProjects();
   openProject(current);
 }
@@ -644,12 +654,12 @@ async function dismissIsbn() {
 async function lookupProjSettings() {
   const q = $("ps-lookup").value.trim();
   const out = $("ps-lookres");
-  if (q.length < 3) { out.textContent = "請輸入書名、作者或 ISBN"; return; }
-  out.textContent = "搜尋中…";
+  if (q.length < 3) { out.textContent = t("請輸入書名、作者或 ISBN"); return; }
+  out.textContent = t("搜尋中…");
   let r;
   try { r = await api("/lookup?q=" + encodeURIComponent(q)); }
-  catch (e) { out.textContent = "查詢失敗：" + e.message; return; }
-  if (!r.results.length) { out.textContent = "查無相符結果 — 請手動填寫欄位"; return; }
+  catch (e) { out.textContent = t("查詢失敗：") + e.message; return; }
+  if (!r.results.length) { out.textContent = t("查無相符結果 — 請手動填寫欄位"); return; }
   out.innerHTML = r.results.map((b, i) => `
     <a href="javascript:void(0)" onclick='pickProjBook(${i})'
        style="display:inline-block;border:1px solid var(--line);border-radius:5px;
@@ -664,8 +674,8 @@ function pickProjBook(i) {
   set("ps-title", b.title); set("ps-author", b.author);
   set("ps-pages", b.pages); set("ps-isbn", b.isbn);
   set("ps-publisher", b.publisher); set("ps-year", b.year);
-  $("ps-lookres").innerHTML = "<span style='color:#166534'>✓ 已填入「"
-    + esc(b.title) + "」的資料 — 請點擊儲存</span>";
+  $("ps-lookres").innerHTML = t("<span style='color:#166534'>✓ 已填入「")
+    + esc(b.title) + t("」的資料 — 請點擊儲存</span>");
 }
 
 function toggleProjSettings() {
@@ -684,7 +694,7 @@ async function saveProjSettings() {
         isbn: $("ps-isbn").value || null,
         publisher: $("ps-publisher").value || null,
         year: $("ps-year").value || null})});
-  } catch (e) { alert("儲存失敗：" + e.message); return; }
+  } catch (e) { alert(t("儲存失敗：") + e.message); return; }
   refreshProjects();
   openProject(current);
 }
@@ -700,7 +710,7 @@ async function openProject(name, tab) {
     "#" + encodeURIComponent(name) + "/" + (tab || "pipeline"));
   const stages = Object.entries(p.stages).map(([s, st]) =>
     `<span class="stage ${st}" id="stage-${s}" title="${STAGE_HELP[s] || ""}">${lbl(s)}</span>`).join("");
-  $("main").innerHTML = `
+  $("main").innerHTML = T`
   <div class="card">
     <h2 style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">
       ${esc(p.book.title || name)}
@@ -708,11 +718,11 @@ async function openProject(name, tab) {
               title="編輯書名／作者／頁數"
               onclick="toggleProjSettings()">✎</button>
       <button class="secondary" style="padding:.15rem .6rem;font-size:.75rem"
-              title="${p.archived ? "移回進行中的專案"
-                : "封存此已完成／閒置的書籍 — 將移至側邊欄"
-                  + "收合的「已封存」群組"}"
+              title="${p.archived ? t("移回進行中的專案")
+                : t("封存此已完成／閒置的書籍 — 將移至側邊欄")
+                  + t("收合的「已封存」群組")}"
               onclick="archiveProject('${esc(name)}', ${!p.archived})">
-        ${p.archived ? "📤 取消封存" : "📥 封存"}</button>
+        ${p.archived ? t("📤 取消封存") : t("📥 封存")}</button>
       <button class="danger" style="padding:.15rem .6rem;font-size:.75rem"
               title="刪除此整個專案" onclick="deleteProject('${esc(name)}')">
         🗑 刪除</button></h2>
@@ -744,7 +754,7 @@ async function openProject(name, tab) {
       <button onclick="saveProjSettings()">儲存</button>
       </div>
     </div>
-    ${p.detected_isbn ? `<div style="border:2px solid var(--accent);
+    ${p.detected_isbn ? T`<div style="border:2px solid var(--accent);
          background:#f0fdfa;border-radius:8px;padding:.6rem .9rem;margin:.2rem 0 .8rem">
       <div class="row">
         <span>📕 在掃描文字中發現 <b>ISBN ${esc(p.detected_isbn)}</b> — 是否自動填入書籍詳細資訊？</span>
@@ -756,7 +766,7 @@ async function openProject(name, tab) {
     <div class="stages">${stages}</div>
     <div class="row">
       <button id="runbtn" onclick="runPipeline()" ${p.running ? "disabled" : ""}>
-        ${p.running ? "執行中…" : "執行 / 繼續"}</button>
+        ${p.running ? t("執行中…") : t("執行 / 繼續")}</button>
       <select id="provider" style="width:auto">
         <option value="">服務提供者：設定預設</option>
         <option>ollama</option><option>anthropic</option><option>hybrid</option><option>mock</option>
@@ -771,9 +781,9 @@ async function openProject(name, tab) {
     <div id="log"></div>
   </div>
   <div class="tabs">
-    ${["pipeline","media","frames","contents","pages","figures","proof","output"].map(t =>
-      `<div class="tab ${t === (tab||"pipeline") ? "active" : ""}"
-        onclick="openProject('${name}','${t}')">${TAB_LABELS[t] || t}</div>`).join("")}
+    ${["pipeline","media","frames","contents","pages","figures","proof","output"].map(k =>
+      `<div class="tab ${k === (tab||"pipeline") ? "active" : ""}"
+        onclick="openProject('${name}','${k}')">${TAB_LABELS[k] || k}</div>`).join("")}
   </div>
   <div id="tabbody"></div>`;
   if (p.running) attachEvents(name);
@@ -786,15 +796,15 @@ function wizardCardHtml(items, anyPages) {
   // honest breakdown of what the wizard will actually walk
   const n = (k) => (items || []).filter(i => i.kind === k).length;
   const parts = [];
-  if (n("missing")) parts.push(`${n("missing")} 個未拍攝頁面${n("missing") > 1 ? "" : ""}`);
-  if (n("reshoot")) parts.push(`${n("reshoot")} 個建議重拍的欠佳拍攝畫面${n("reshoot") > 1 ? "" : ""}`);
-  if (n("figure")) parts.push(`${n("figure")} 個圖表特寫${n("figure") > 1 ? "" : ""}`);
+  if (n("missing")) parts.push(T`${n("missing")} 個未拍攝頁面${n("missing") > 1 ? "" : ""}`);
+  if (n("reshoot")) parts.push(T`${n("reshoot")} 個建議重拍的欠佳拍攝畫面${n("reshoot") > 1 ? "" : ""}`);
+  if (n("figure")) parts.push(T`${n("figure")} 個圖表特寫${n("figure") > 1 ? "" : ""}`);
   const desc = !anyPages
-    ? "目前尚無頁面 — 請逐頁拍攝整本書（系統會詢問最後一頁的頁碼）"
+    ? t("目前尚無頁面 — 請逐頁拍攝整本書（系統會詢問最後一頁的頁碼）")
     : parts.length
-    ? `${parts.join(" + ")} — 依頁碼順序逐一處理；文字辨識會在最後統一執行一次`
-    : "書籍看似完整 — 精靈佇列中無待處理項目";
-  return `
+    ? T`${parts.join(" + ")} — 依頁碼順序逐一處理；文字辨識會在最後統一執行一次`
+    : t("書籍看似完整 — 精靈佇列中無待處理項目");
+  return T`
     <div class="card" style="background:#f0fdfa;border:2px solid var(--accent)">
       <div class="row">
         <div style="flex:1;min-width:14rem">
@@ -803,9 +813,9 @@ function wizardCardHtml(items, anyPages) {
         </div>
         <span class="row">
           <button style="font-size:1.05rem;padding:.7rem 1.4rem"
-                  onclick="startWizard()">${!anyPages ? "拍攝整本書"
-                                            : "依頁碼拍攝"}</button>
-          ${anyPages ? `<button class="secondary" onclick="startUnidentifiedWizard()">
+                  onclick="startWizard()">${!anyPages ? t("拍攝整本書")
+                                            : t("依頁碼拍攝")}</button>
+          ${anyPages ? T`<button class="secondary" onclick="startUnidentifiedWizard()">
             未識別頁面…</button>` : ""}
         </span>
       </div>
@@ -813,7 +823,7 @@ function wizardCardHtml(items, anyPages) {
 }
 
 function addPagePanel() {
-  return `
+  return T`
     <div class="card">
       <h2>從相片新增頁面</h2>
       <div class="row">
@@ -842,7 +852,7 @@ function renderTab(tab, p) {
       const items = r.items || [];
       const anyPages = (p.pages || []).some(x => !x.role);
       const wizardCard = wizardCardHtml(q.items, anyPages);
-      const missingCard = r.missing && r.missing.length ? `
+      const missingCard = r.missing && r.missing.length ? T`
         <div class="card" style="border:2px solid #f59e0b">
           <h2>缺頁 — 從未拍攝</h2>
           <p>實體頁碼 <b>${esc(r.missing_ranges)}</b>（${r.missing.length} 頁）未出現在任何影片中。請錄製書本的這些部分（任何方向皆可）並使用
@@ -850,23 +860,23 @@ function renderTab(tab, p) {
         </div>` : "";
       const cropItems = cl.items || [];
       const nCrops = cropItems.reduce((s, it) => s + it.regions.length, 0);
-      const cropCard = `<div class="card" style="border:2px solid #6366f1">
+      const cropCard = T`<div class="card" style="border:2px solid #6366f1">
         <div class="row" style="margin-bottom:.4rem">
           <h2 style="margin:0">✂ 裁切清單 — 需要裁切的區塊</h2>
-          ${cropItems.length ? `<button style="margin-left:auto"
+          ${cropItems.length ? T`<button style="margin-left:auto"
              onclick="startCropReview()">✂ 定義裁切 (${nCrops})…</button>` : ""}
         </div>
         <div class="meta">模型標記但尚未裁切的圖表 —
           逐頁檢視並繪製外框（或使用 ✨ 智慧裁切）。僅有可略過品質備註的頁面也會包含於此。</div>`
         + (cropItems.length ? "<ul>" + cropItems.map(it =>
-            `<li><a href="javascript:void(0)" onclick="gotoPage('${it.id}')"><b>${it.id}</b>${
-              it.printed_number ? `（頁碼 ${it.printed_number}）` : ""}</a> — ${
+            T`<li><a href="javascript:void(0)" onclick="gotoPage('${it.id}')"><b>${it.id}</b>${
+              it.printed_number ? T`（頁碼 ${it.printed_number}）` : ""}</a> — ${
               it.regions.length} 個區塊${
-              it.suspect ? ` <span class="meta">· 頁面亦被標記</span>` : ""}</li>`).join("")
+              it.suspect ? T` <span class="meta">· 頁面亦被標記</span>` : ""}</li>`).join("")
             + "</ul>"
-          : "<div class='meta'>目前為空 — 所有區塊皆已裁切</div>") + `</div>`;
+          : t("<div class='meta'>目前為空 — 所有區塊皆已裁切</div>")) + `</div>`;
       const reocrItems = ro.items || [];
-      const reocrCard = reocrItems.length ? `<div class="card" style="border:2px solid #dc2626">
+      const reocrCard = reocrItems.length ? T`<div class="card" style="border:2px solid #dc2626">
         <div class="row" style="margin-bottom:.4rem">
           <h2 style="margin:0">⚠ 重新辨識清單 — 辨識失敗</h2>
           <button style="margin-left:auto" onclick="reocrAll()">↻ 全部重新辨識 (${reocrItems.length})</button>
@@ -874,25 +884,25 @@ function renderTab(tab, p) {
         <div class="meta">模型無法辨識的頁面 — 重新辨識會透過分割與復原程序重試（於工作佇列中執行）。若之後仍失敗，可能確實需要重拍。</div>
         <ul>${reocrItems.map(it => `<li>
           <a href="javascript:void(0)" onclick="gotoPage('${it.id}')"><b>${it.id}</b>${
-            it.printed_number ? `（頁碼 ${it.printed_number}）` : ""}</a>
+            it.printed_number ? T`（頁碼 ${it.printed_number}）` : ""}</a>
           ${it.can_reocr
-            ? `<button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
+            ? T`<button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
                  onclick="reocrOne('${it.id}')">↻ 重新辨識</button>`
-            : `<span class="meta">· 請先執行處理流程</span>`}
+            : T`<span class="meta">· 請先執行處理流程</span>`}
           <span class="meta"> — ${esc(it.error)}</span></li>`).join("")}</ul>
       </div>` : "";
       body.innerHTML = wizardCard + missingCard + reocrCard + cropCard
-        + `<div class="card"><div class="row" style="margin-bottom:.4rem">
+        + T`<div class="card"><div class="row" style="margin-bottom:.4rem">
             <h2 style="margin:0">重拍清單 — 拍攝品質不佳</h2>
-            ${items.length ? `<button style="margin-left:auto"
+            ${items.length ? T`<button style="margin-left:auto"
                onclick="startReshootReview()">🔍 審閱這些項目 (${items.length})…</button>` : ""}
            </div>
            <div class="meta">在執行補拍精靈之前，逐一翻閱各個標記的頁面並確認或略過</div>` + (items.length
         ? "<ul>" + items.map(i =>
             `<li><a href="javascript:void(0)" onclick="gotoPage('${i.id}')"><b>${i.id}</b>${
-              i.printed_number ? `（頁碼 ${i.printed_number}）` : ""}</a>
+              i.printed_number ? T`（頁碼 ${i.printed_number}）` : ""}</a>
              — ${esc(i.reasons.join(", "))}</li>`).join("") + "</ul>"
-        : "<div class='meta'>目前為空 — 所有頁面看起來皆正常</div>") + `</div>`;
+        : t("<div class='meta'>目前為空 — 所有頁面看起來皆正常</div>")) + `</div>`;
     });
   } else if (tab === "media") {
     const photoPages = p.pages.filter(pg => pg.patched_source);
@@ -901,7 +911,7 @@ function renderTab(tab, p) {
       if (holder) holder.innerHTML = wizardCardHtml(
         q.items, (p.pages || []).some(x => !x.role));
     });
-    body.innerHTML = `<div id="media-wizard"></div>` + `
+    body.innerHTML = `<div id="media-wizard"></div>` + T`
       <div class="card">
         <h2>新增媒體</h2>
         <div class="row" style="margin-bottom:.6rem">
@@ -930,21 +940,21 @@ function renderTab(tab, p) {
       </div>
       <div class="card">
         <h2>影片 (${p.videos.length})</h2>
-        ${p.videos.map(v => `
+        ${p.videos.map(v => T`
           <div class="row" style="border-top:1px solid var(--line);padding:.6rem 0">
             <div style="flex:1;min-width:12rem">
               <b>${v.id}</b> <span class="meta">·
                 ${esc((v.source || v.path).split(/[\\\\/]/).pop())}</span>
               <div class="meta">${v.fps_actual} fps · ${v.nb_frames ?? "?"} 影格 ·
-                ${v.duration ? Math.round(v.duration) + " 秒" : ""}
-                ${v.rotate === 180 ? " · 已旋轉 180°" : ""}</div>
+                ${v.duration ? Math.round(v.duration) + t(" 秒") : ""}
+                ${v.rotate === 180 ? t(" · 已旋轉 180°") : ""}</div>
             </div>
             <label style="display:flex;align-items:center;gap:.3rem">
               <input type="checkbox" style="width:auto;margin:0"
                      ${v.rotate === 180 ? "checked" : ""}
                      onchange="setRotate('${v.id}', this.checked)">
               上下顛倒拍攝</label>
-          </div>`).join("") || "<div class='meta'>尚無影片</div>"}
+          </div>`).join("") || t("<div class='meta'>尚無影片</div>")}
       </div>
       <div class="card">
         <h2>頁面照片 (${photoPages.length})</h2>
@@ -956,21 +966,21 @@ function renderTab(tab, p) {
             <div style="flex:1;min-width:10rem">
               <a href="javascript:void(0)" onclick="gotoPage('${pg.id}')"><b>${pg.id}</b></a>
               <span class="badge ${pg.status}">${lbl(pg.status)}</span>
-              ${pg.role === "cover" ? '<span class="badge ok">封面</span>' : ""}
+              ${pg.role === "cover" ? t('<span class="badge ok">封面</span>') : ""}
               <div class="meta">${pg.printed_number != null
-                ? "頁碼 " + pg.printed_number : "無頁碼"}</div>
+                ? t("頁碼 ") + pg.printed_number : t("無頁碼")}</div>
             </div>
           </div>`).join("")
-          || "<div class='meta'>尚未新增照片 — 請使用上方的「從照片新增頁面」" +
-             "來加入封面、蝴蝶頁文字或遺漏的頁面</div>"}
+          || t("<div class='meta'>尚未新增照片 — 請使用上方的「從照片新增頁面」") +
+             t("來加入封面、蝴蝶頁文字或遺漏的頁面</div>")}
       </div>`;
     renderStorage(name);
   } else if (tab === "pages") {
     // unsaved markdown edits must survive re-renders (section change, ignore,
     // crop save, page links all rebuild this tab)
     const dirtyMd = {};
-    document.querySelectorAll('textarea[id^="md-"]').forEach(t => {
-      if (t.dataset.dirty) dirtyMd[t.id] = t.value;
+    document.querySelectorAll('textarea[id^="md-"]').forEach(ta => {
+      if (ta.dataset.dirty) dirtyMd[ta.id] = ta.value;
     });
     freshFiltersFor(name);   // fresh project -> fresh filters (shared with figures)
     // assign every page to a chapter: printed-TOC ranges for numbered pages,
@@ -982,21 +992,21 @@ function renderTab(tab, p) {
     const haveCh = p.pages.some(pg => pg.chapter);
     const toc = (p.toc || []).slice().sort((a, b) => a.start - b.start);
     const chapterOfNum = (n) => {
-      let c = "正文前頁";
+      let c = t("正文前頁");
       for (const e of toc) { if (n >= e.start) c = e.title; else break; }
       return c;
     };
-    let curCh = "正文前頁";
+    let curCh = t("正文前頁");
     const chapters = [];
     p.pages.forEach(pg => {
       if (haveCh) {
-        pg._chapter = pg.chapter || "正文前頁";
+        pg._chapter = pg.chapter || t("正文前頁");
       } else {
         if (pg.section) curCh = pg.section;
         else if (toc.length && pg.printed_number != null && pg.printed_number >= 1
                  && pg.status !== "duplicate" && pg.status !== "deleted")
           curCh = chapterOfNum(pg.printed_number);
-        pg._chapter = pg.role === "cover" ? "封面" : curCh;
+        pg._chapter = pg.role === "cover" ? t("封面") : curCh;
       }
       if (!chapters.includes(pg._chapter)) chapters.push(pg._chapter);
     });
@@ -1008,7 +1018,7 @@ function renderTab(tab, p) {
     const shown = p.pages.filter(pg =>
       (!chapterFilter || pg._chapter === chapterFilter)
       && (!flt.unnumbered || (pg.printed_number == null && !pg.role)));
-    const toolbar = `<div class="card" style="padding:.7rem 1.5rem">
+    const toolbar = T`<div class="card" style="padding:.7rem 1.5rem">
       <div class="row">
         <label style="margin:0">章節</label>
         <select style="width:auto;margin:0"
@@ -1035,7 +1045,7 @@ function renderTab(tab, p) {
       let out = "";
       if (lastNum != null && n > lastNum + 1) {
         const a = lastNum + 1, b = n - 1;
-        out = `<div class="card" style="border:2px dashed #f59e0b;background:#fffbeb;
+        out = T`<div class="card" style="border:2px dashed #f59e0b;background:#fffbeb;
                  padding:.5rem 1.5rem;display:flex;gap:.8rem;align-items:center">
           <span style="color:#b45309"><b>缺頁：</b>第
             ${b > a ? a + "–" + b : a} 頁 — 從未拍攝</span>
@@ -1050,77 +1060,77 @@ function renderTab(tab, p) {
       ? chapters[chapters.indexOf(flt.chapter) + 1] : null;
     const nextBtn = flt.chapter ? `
       <div class="card" style="text-align:center">
-        ${nextCh ? `<button style="font-size:1rem;padding:.7rem 1.6rem"
+        ${nextCh ? T`<button style="font-size:1rem;padding:.7rem 1.6rem"
             onclick="nextSection('${esc(nextCh)}')">下一節：${esc(nextCh)} →</button>`
-          : `<span class="meta">最後一節 — 全書已檢視完畢</span>`}
+          : T`<span class="meta">最後一節 — 全書已檢視完畢</span>`}
       </div>` : "";
     body.innerHTML = toolbar
       + shown.map(pg => gapBefore(pg) + (pg2html(pg))).join("")
       + nextBtn + cropModalHtml();
     for (const [id, val] of Object.entries(dirtyMd)) {
-      const t = $(id);
-      if (t) {
-        t.value = val;
-        t.dataset.dirty = 1;
+      const ta = $(id);
+      if (ta) {
+        ta.value = val;
+        ta.dataset.dirty = 1;
         const b = $("mdsave-" + id.slice(3));
-        if (b) { b.textContent = "儲存 Markdown *"; b.disabled = false; }
+        if (b) { b.textContent = t("儲存 Markdown *"); b.disabled = false; }
       }
     }
     function pg2html(pg) {
       const collapsed = pg.status === "deleted" || pg.status === "duplicate";
       const numLabel = pg.printed_number != null
-        ? "頁碼 " + pg.printed_number + (pg.number_inferred ? " (推斷)" : "")
-          + (pg.number_manual ? " (手動)" : "")
-        : "無頁碼";
+        ? t("頁碼 ") + pg.printed_number + (pg.number_inferred ? t(" (推斷)") : "")
+          + (pg.number_manual ? t(" (手動)") : "")
+        : t("無頁碼");
       // an ignored suspect is "acceptable" (orange), never a clean green ok —
       // and it keeps a note of what the complaint was
       const accepted = pg.suspect_ignored && pg.status === "ok";
       const badge = accepted
-        ? `<span class="badge acceptable"
+        ? T`<span class="badge acceptable"
              title="曾被標記為可疑 — 經審閱後已接受">可接受</span>`
         : `<span class="badge ${pg.status}">${lbl(pg.status)}</span>`;
       // row 1: identity + page-number reassignment
       const header = `
         <div class="row" style="padding:.15rem 0">
           ${badge}
-          ${pg.role === "cover" ? `<span class="badge patched"
+          ${pg.role === "cover" ? T`<span class="badge patched"
              title="此頁為書籍封面圖片（作為 EPUB 封面使用）"
              style="font-weight:600">📕 封面</span>` : ""}
           <b>${pg.id}</b>
-          ${pg.section ? `<span class="badge ok" style="cursor:pointer"
+          ${pg.section ? T`<span class="badge ok" style="cursor:pointer"
              title="此頁為章節開頭（點擊以編輯）"
              onclick="setSection('${pg.id}')">§ ${esc(pg.section)}</span>` : ""}
           <span class="meta" style="margin:0">${numLabel}
-            ${pg.confidence ? " · 信心度" + lbl(pg.confidence) : ""}
-            ${pg.needs_reshoot ? " · 📷 重拍" : ""}
+            ${pg.confidence ? t(" · 信心度") + lbl(pg.confidence) : ""}
+            ${pg.needs_reshoot ? t(" · 📷 重拍") : ""}
             ${pg.reasons?.length
               ? ` · <span style="color:#b45309">⚠ ${esc(pg.reasons.join("; "))}</span>`
                 + (pg.transcribe_error
-                  ? ` <button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
+                  ? T` <button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
                        title="立即在此頁重新執行 OCR"
                        onclick="retryOcr('${pg.id}', this)">↻ 重試 OCR</button>` : "")
                 + (pg.status === "suspect"
-                  ? ` <button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
+                  ? T` <button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
                        title="頁面其實沒問題 — 清除可疑標記"
                        onclick="ignoreSuspect('${pg.id}')">忽略</button>` : "") : ""}
-            ${accepted ? ` · <span style="color:#c2410c" title="原始標記原因">
-              原為：${esc((pg.ignored_reasons || ["曾標記為可疑"]).join("; "))}
+            ${accepted ? T` · <span style="color:#c2410c" title="原始標記原因">
+              原為：${esc((pg.ignored_reasons || [t("曾標記為可疑")]).join("; "))}
               — 已由您忽略</span>` : ""}</span>
           <span class="row" style="margin-left:auto">
-            ${collapsed ? `
-              ${pg.status === "duplicate" ? `<button class="secondary"
+            ${collapsed ? T`
+              ${pg.status === "duplicate" ? T`<button class="secondary"
                  onclick="unduplicate('${pg.id}')">非重複</button>` : ""}
-              ${pg.status === "deleted" ? `<button class="secondary"
+              ${pg.status === "deleted" ? T`<button class="secondary"
                  onclick="restorePage('${pg.id}')">取消隱藏</button>` : ""}
               <button class="secondary" onclick="toggleCell('${pg.id}')"
                       id="tgl-${pg.id}">展開 ▾</button>`
-            : `<label style="margin:0">頁碼</label>
+            : T`<label style="margin:0">頁碼</label>
                <input type="number" id="num-${pg.id}" value="${pg.printed_number ?? ""}"
                       title="0 或負數 = 書前頁（排在第 1 頁之前）：書名頁 -3、目錄 -2、序言 -1"
                       style="width:5.5rem;margin:0" onchange="setPageNumber('${pg.id}')">`}
           </span>
         </div>`;
-      const figs = (pg.figures || []).map((f, i) => `
+      const figs = (pg.figures || []).map((f, i) => T`
         <span style="display:inline-flex;flex-direction:column;align-items:center;
                      gap:2px;vertical-align:top">
           <span class="meta" title="${esc(f)} — 對應「圖表」分頁中此圖表的圖說" style="margin:0;font-size:.62rem;font-family:monospace;
@@ -1142,14 +1152,14 @@ function renderTab(tab, p) {
         // regions whose figure crop never happened: offer to draw one
         + (pg.regions || []).map((r, ri) => {
             const expected = `figures/${pg.id}_${String.fromCharCode(97 + ri % 26)}.png`;
-            return (!r.deleted && !(pg.figures || []).includes(expected)) ? `
+            return (!r.deleted && !(pg.figures || []).includes(expected)) ? T`
               <button class="secondary" style="border:2px dashed #f59e0b;background:#fffbeb;
                       color:#b45309"
                       onclick="openCrop('${pg.id}', ${ri}, 'pages', true)">
                 + 為區塊 ${ri} 新增圖表${r.caption ? " · " + esc(r.caption).slice(0, 30) : ""}
               </button>` : "";
           }).join("");
-      return `
+      return T`
       <div class="card ${pg.status}${accepted ? " accepted" : ""}" id="cell-${pg.id}">
         ${header}
         <div class="pagerow-body" style="${collapsed ? "display:none" : ""}">
@@ -1163,8 +1173,8 @@ function renderTab(tab, p) {
             <div>
               <textarea id="md-${pg.id}" data-page="${pg.id}"
                 placeholder="${pg.md ? "" : pg.status === "patched"
-                  ? "尚未辨識 — 在「處理流程」分頁點擊「執行 / 繼續」以辨識此新照片"
-                  : "尚無辨識結果"}"
+                  ? t("尚未辨識 — 在「處理流程」分頁點擊「執行 / 繼續」以辨識此新照片")
+                  : t("尚無辨識結果")}"
                 oninput="this.dataset.dirty=1;
                          const b=$('mdsave-${pg.id}');
                          b.textContent='儲存 Markdown *';b.disabled=false"></textarea>
@@ -1182,25 +1192,25 @@ function renderTab(tab, p) {
             <button class="secondary" onclick="$('patch-${pg.id}').click()">
               替換照片並重新處理…</button>
             <button class="secondary" onclick="toggleReshoot('${pg.id}', ${!pg.needs_reshoot})">
-              ${pg.needs_reshoot ? "取消重拍標記" : "標記為需重拍"}</button>
+              ${pg.needs_reshoot ? t("取消重拍標記") : t("標記為需重拍")}</button>
             <button class="secondary" title="將此頁設為章節開頭"
-              onclick="setSection('${pg.id}')">${pg.section ? "編輯章節" : "§ 章節標題"}</button>
+              onclick="setSection('${pg.id}')">${pg.section ? t("編輯章節") : t("§ 章節標題")}</button>
             <button class="secondary" title="將此頁圖片設為書籍封面"
               onclick="setCover('${pg.id}', ${pg.role !== "cover"})">${
-              pg.role === "cover" ? "📕 取消封面" : "📕 設為封面"}</button>
+              pg.role === "cover" ? t("📕 取消封面") : t("📕 設為封面")}</button>
             <button class="secondary" title="為模型在此頁遺漏的插圖框選裁切範圍" onclick="openCrop('${pg.id}',
               ${(pg.regions || []).length}, 'pages', true)">＋ 新增圖表</button>
-            ${pg.patched_source ? `<button class="secondary"
+            ${pg.patched_source ? T`<button class="secondary"
               title="照片拍顛倒了？旋轉 180 度並重新處理"
               onclick="rotatePage('${pg.id}')">↻ 180°</button>
             <button class="secondary" title="使用邊角控制點裁切此頁照片 — 特別適用於封面" onclick="openPageCrop('${pg.id}')">
               ✂ 裁切頁面</button>` : ""}
             ${pg.status === "duplicate"
-              ? `<button class="secondary" onclick="unduplicate('${pg.id}')">非重複</button>`
-              : `<button class="secondary" onclick="markDuplicate('${pg.id}')">標記為重複</button>`}
+              ? T`<button class="secondary" onclick="unduplicate('${pg.id}')">非重複</button>`
+              : T`<button class="secondary" onclick="markDuplicate('${pg.id}')">標記為重複</button>`}
             ${pg.status === "deleted"
-              ? `<button class="secondary" onclick="restorePage('${pg.id}')">取消隱藏</button>`
-              : `<button class="danger" onclick="deletePage('${pg.id}')">隱藏</button>`}
+              ? T`<button class="secondary" onclick="restorePage('${pg.id}')">取消隱藏</button>`
+              : T`<button class="danger" onclick="deletePage('${pg.id}')">隱藏</button>`}
           </div>
         </div>
       </div>`;
@@ -1215,12 +1225,12 @@ function renderTab(tab, p) {
           try {
             const r = await fetch(`/api/projects/${name}/file/${pg.md}`);
             if (r.ok) {
-              const t = await r.text();
+              const md = await r.text();
               const e = $("md-" + pg.id);
               // NEVER overwrite an editor the user has touched or is in —
               // this race used to eat in-progress edits
               if (e && !e.dataset.dirty && document.activeElement !== e)
-                e.value = t;
+                e.value = md;
             }
           } catch {}
         }
@@ -1235,10 +1245,10 @@ function renderTab(tab, p) {
       }
     } catch {}
   } else if (tab === "frames") {
-    body.innerHTML = `<div class="card"><h2>標準影格（印樣）</h2>
+    body.innerHTML = T`<div class="card"><h2>標準影格（印樣）</h2>
       ${p.contact_sheet
         ? `<img style="max-width:100%" src="/api/projects/${name}/file/work/contact_sheet.jpg">`
-        : "<div class='meta'>請先執行處理流程</div>"}</div>`;
+        : t("<div class='meta'>請先執行處理流程</div>")}</div>`;
   } else if (tab === "contents") {
     // the effective chapter list the built book uses: one entry per distinct
     // chapter title (a manual section heading, else the heading assemble
@@ -1256,24 +1266,24 @@ function renderTab(tab, p) {
     window._chapters = chapters;   // pass titles by index (avoids quote escaping)
     const sup = p.suppressed_headings || {};
     window._hiddenHeadings = Object.entries(sup)
-      .flatMap(([pid, titles]) => (titles || []).map(t => ({pageId: pid, title: t})));
+      .flatMap(([pid, titles]) => (titles || []).map(title => ({pageId: pid, title})));
     const toc = p.toc || [];
     // first open with no chapters but a printed contents page → seed it once
     if (!chapters.length && toc.length && !contentsAutodetected[name]) {
       contentsAutodetected[name] = true;
-      body.innerHTML = `<div class="card"><div class="meta">正在從印刷目錄頁偵測章節…</div></div>`;
+      body.innerHTML = T`<div class="card"><div class="meta">正在從印刷目錄頁偵測章節…</div></div>`;
       contentsAutodetect(false, false);
       return;
     }
     const pageOpts = (p.pages || [])
       .filter(pg => !pg.role && pg.status !== "duplicate" && pg.status !== "deleted")
       .map(pg => `<option value="${pg.id}">${pg.id}${
-        pg.printed_number != null ? ` — 印刷頁碼 ${pg.printed_number}` : ""}</option>`).join("");
-    body.innerHTML = `
+        pg.printed_number != null ? T` — 印刷頁碼 ${pg.printed_number}` : ""}</option>`).join("");
+    body.innerHTML = T`
       <div class="card">
         <div class="row" style="margin-bottom:.4rem">
           <h2 style="margin:0">目錄</h2>
-          ${toc.length ? `<button class="secondary" style="margin-left:auto"
+          ${toc.length ? T`<button class="secondary" style="margin-left:auto"
               onclick="contentsAutodetect(false, true)"
               title="從印刷目錄頁填入尚未設定的章節"
               >↻ 從印刷目錄偵測</button>
@@ -1282,27 +1292,27 @@ function renderTab(tab, p) {
         </div>
         <div class="meta" style="margin-bottom:.7rem">本書章節依序排列。每個章節對應<b>起始頁上的章節標題</b> — 在此編輯標題將同步更新該頁面。「頁面」篩選條件、「校對」分頁與 EPUB 均採用相同結構，因此章節位置會依循其起始頁。</div>
         ${chapters.length ? `<ol style="padding-left:1.3rem;margin:.2rem 0">
-          ${chapters.map((ch, ci) => `<li style="margin:.4rem 0">
+          ${chapters.map((ch, ci) => T`<li style="margin:.4rem 0">
             <div class="row" style="gap:.5rem;align-items:center">
               <input value="${esc(ch.title)}" style="flex:1;margin:0"
                 onchange="renameChapter('${ch.id}', this.value)">
               ${ch.fromSection
-                ? `<span class="badge ok" title="由您設定的標題">手動</span>`
-                : `<span class="meta" title="從頁面本身的標題偵測">標題</span>`}
+                ? T`<span class="badge ok" title="由您設定的標題">手動</span>`
+                : T`<span class="meta" title="從頁面本身的標題偵測">標題</span>`}
               <a href="javascript:void(0)" class="meta" style="white-space:nowrap"
                 onclick="gotoPage('${ch.id}')" title="前往此頁面"
-                >${ch.printed_number != null ? `第 ${ch.printed_number} 頁` : ch.id} ↗</a>
+                >${ch.printed_number != null ? T`第 ${ch.printed_number} 頁` : ch.id} ↗</a>
               <button class="secondary" style="padding:.2rem .55rem"
                 onclick="${ch.fromSection
                   ? `removeChapter('${ch.id}')`
                   : `suppressHeadingIdx(${ci})`}"
-                title="${ch.fromSection ? "清除此手動標題（保留頁面）"
-                  : "移除此自動偵測標題 — OCR 誤判 "
-                    + "（在書籍中降為純文字；保留頁面 OCR 結果；可復原）"}"
+                title="${ch.fromSection ? t("清除此手動標題（保留頁面）")
+                  : t("移除此自動偵測標題 — OCR 誤判 ")
+                    + t("（在書籍中降為純文字；保留頁面 OCR 結果；可復原）")}"
                 >✕</button>
             </div></li>`).join("")}
-        </ol>` : `<div class="meta">尚無章節。${toc.length ? ""
-          : " 未偵測到印刷目錄頁 — 請在下方新增章節，或於「頁面」分頁指定章節標題。"}</div>`}
+        </ol>` : T`<div class="meta">尚無章節。${toc.length ? ""
+          : t(" 未偵測到印刷目錄頁 — 請在下方新增章節，或於「頁面」分頁指定章節標題。")}</div>`}
       </div>
       <div class="card">
         <h2>新增章節</h2>
@@ -1314,19 +1324,19 @@ function renderTab(tab, p) {
           <button onclick="addChapter()">新增</button>
         </div>
       </div>
-      ${window._hiddenHeadings.length ? `<div class="card">
+      ${window._hiddenHeadings.length ? T`<div class="card">
         <h2>已隱藏標題 <span class="meta">— 您移除的自動偵測誤判標題</span></h2>
         <div class="meta" style="margin-bottom:.4rem">已在產生的書籍中降為純文字；若實際上為章節可予以還原。</div>
         <ul style="margin:.2rem 0;padding-left:1.2rem">${window._hiddenHeadings.map((h, hi) =>
-          `<li style="margin:.2rem 0">${esc(h.title)}
+          T`<li style="margin:.2rem 0">${esc(h.title)}
             <span class="meta">(${h.pageId})</span>
             <button class="secondary" style="padding:.1rem .5rem;font-size:.7rem"
               onclick="restoreHeadingIdx(${hi})">還原</button></li>`).join("")}</ul>
       </div>` : ""}
-      ${toc.length ? `<div class="card">
+      ${toc.length ? T`<div class="card">
         <h2>印刷目錄頁 <span class="meta">— OCR 辨識結果，供參考</span></h2>
-        <ul class="meta" style="columns:2;column-gap:2rem">${toc.map(t =>
-          `<li>${esc(t.title)} — ${t.start}</li>`).join("")}</ul>
+        <ul class="meta" style="columns:2;column-gap:2rem">${toc.map(e =>
+          `<li>${esc(e.title)} — ${e.start}</li>`).join("")}</ul>
       </div>` : ""}`;
   } else if (tab === "figures") {
     // real duplicates (same image captured twice) are told from distinct
@@ -1336,53 +1346,53 @@ function renderTab(tab, p) {
       .catch(() => renderFiguresTab(p, []));
   } else if (tab === "proof") {
     const sevColor = {high: "#dc2626", medium: "#d97706", low: "#78716c"};
-    const findingHtml = (f, ci, fi) => `
+    const findingHtml = (f, ci, fi) => T`
       <div style="border-top:1px solid var(--line);padding:.45rem 0;font-size:.85rem${
           f.rejected ? ";opacity:.55" : ""}">
         <span style="color:${sevColor[f.severity] || "#78716c"}">●</span>
         <b>${esc(f.type)}</b>
-        ${f.page ? ` · <a href="javascript:void(0)"
+        ${f.page ? T` · <a href="javascript:void(0)"
             onclick="gotoPage('${f.page}')">${f.printed_number != null
-              ? "第 " + f.printed_number + " 頁" : f.page}</a>
+              ? t("第 ") + f.printed_number + t(" 頁") : f.page}</a>
           <button class="secondary" style="padding:.05rem .5rem;font-size:.7rem"
             title="在浮動面板中開啟頁面影像以與引文進行對照"
             onclick="peekPage('${f.page}')">👁 檢視頁面</button>` : ""}
-        ${f.source === "lint" ? ' · <span class="meta">自動檢查</span>' : ""}
+        ${f.source === "lint" ? t(' · <span class="meta">自動檢查</span>') : ""}
         <div style="font-family:ui-monospace,monospace;font-size:.78rem;margin:.15rem 0">
           “${esc(f.quote)}”${f.replacement != null
             ? ` → <span style="${f.rejected ? "text-decoration:line-through" : ""}">“${esc(f.replacement)}”</span>` : ""}
-          ${f.user_edit ? ' <span class="badge ok">自訂修改</span>' : ""}
-          ${f.quote ? ` <button class="secondary" style="padding:.05rem .5rem;font-size:.7rem"
+          ${f.user_edit ? t(' <span class="badge ok">自訂修改</span>') : ""}
+          ${f.quote ? T` <button class="secondary" style="padding:.05rem .5rem;font-size:.7rem"
               title="自行填寫或調整修改後的文字 — 僅套用於校對層，頁面 OCR 文字保持不變"
-              onclick="editFix(${ci}, ${fi})">✎ ${f.replacement != null ? "編輯修改" : "撰寫修改"}</button>` : ""}
-          ${f.page ? ` <button class="secondary"
+              onclick="editFix(${ci}, ${fi})">✎ ${f.replacement != null ? t("編輯修改") : t("撰寫修改")}</button>` : ""}
+          ${f.page ? T` <button class="secondary"
               style="padding:.05rem .5rem;font-size:.7rem"
               title="讓視覺模型直接從頁面相片中重新辨識此段落" onclick="resolveFinding(${ci}, ${fi}, this)">🔎 重新辨識頁面</button>` : ""}
           ${f.replacement == null
-            ? ' <span class="meta">— 附註：✎ 在此撰寫修改，或若拍攝畫面本身有問題請使用頁面連結</span>'
+            ? t(' <span class="meta">— 附註：✎ 在此撰寫修改，或若拍攝畫面本身有問題請使用頁面連結</span>')
             : f.rejected
-            ? ` <span style="color:#78716c">已復原</span>
+            ? T` <span style="color:#78716c">已復原</span>
                 <button class="secondary" style="padding:.05rem .5rem;font-size:.7rem"
                   onclick="toggleFinding(${ci}, ${fi}, true)">套用</button>`
             : f.applied
-            ? ` <span style="color:#166534">✓ 已套用至校對本</span>
+            ? T` <span style="color:#166534">✓ 已套用至校對本</span>
                 <button class="secondary" style="padding:.05rem .5rem;font-size:.7rem"
                   title="僅復原此項修改"
                   onclick="toggleFinding(${ci}, ${fi}, false)">復原</button>`
             : (f.skip_reason || "").startsWith("ambiguous")
-            ? ` <span style="color:#b45309">引文出現了 ${f.skip_reason.split(":")[1]} 次 —
+            ? T` <span style="color:#b45309">引文出現了 ${f.skip_reason.split(":")[1]} 次 —
                   未自動套用</span>
                 <button style="padding:.05rem .5rem;font-size:.7rem"
                   onclick="toggleFinding(${ci}, ${fi}, true, true)">套用至全部
                   ${f.skip_reason.split(":")[1]} 處</button>`
             : (f.skip_reason || "").startsWith("unsafe")
-            ? ` <span style="color:#dc2626">暫緩處理：${esc(f.skip_reason.slice(7))} —
+            ? T` <span style="color:#dc2626">暫緩處理：${esc(f.skip_reason.slice(7))} —
                   套用前請以 ✎ 審閱</span>`
             : f.skip_reason === "reference"
-            ? ` <span style="color:#b45309">參考資料內容 — 請與頁面對照確認，然後</span>
+            ? T` <span style="color:#b45309">參考資料內容 — 請與頁面對照確認，然後</span>
                 <button style="padding:.05rem .5rem;font-size:.7rem"
                   onclick="toggleFinding(${ci}, ${fi}, true, true)">套用</button>`
-            : ' <span style="color:#78716c">找不到引文 — 文字可能已變更</span>'}
+            : t(' <span style="color:#78716c">找不到引文 — 文字可能已變更</span>')}
         </div>
         ${f.note ? `<div class="meta" style="margin:0">${esc(f.note)}</div>` : ""}
         <div id="fixed-${ci}-${fi}" style="display:none;margin:.35rem 0 0">
@@ -1405,44 +1415,44 @@ function renderTab(tab, p) {
       // can often resolve them automatically
       const stuck = (d?.findings || []).filter(f =>
         f.page && !f.applied && !f.rejected && (f.replacement == null || f.skip_reason));
-      return `<div class="card">
+      return T`<div class="card">
         <div class="row">
           <b>${c.idx}. ${esc(c.title)}</b>
           <span class="badge ${badgeCls}">${c.status}</span>
           <span class="meta" style="margin:0">${(c.chars / 1000).toFixed(1)}k 字${
             c.findings != null
-              ? ` · ${c.findings} 個發現 · ${c.applied} 個自動套用` : ""}${
-            c.heavy ? ' · <span style="color:#b45309">⚠ 大幅變更 — 請仔細審閱</span>' : ""}</span>
+              ? T` · ${c.findings} 個發現 · ${c.applied} 個自動套用` : ""}${
+            c.heavy ? t(' · <span style="color:#b45309">⚠ 大幅變更 — 請仔細審閱</span>') : ""}</span>
           <span class="row" style="margin-left:auto">
-            ${stuck.length && c.status !== "stale" ? `<button class="secondary"
+            ${stuck.length && c.status !== "stale" ? T`<button class="secondary"
               onclick="rereadChapter(${c.idx}, this)" title="直接從頁面影像重新辨識此章節 ${stuck.length} 個未解決的頁面關聯發現；安全的修改將自動套用"
               >🔎 重新辨識 ${stuck.length} 個卡住項目</button>` : ""}
-            ${c.status === "stale" ? `<button onclick="refreshProof(${c.idx}, this)"
+            ${c.status === "stale" ? T`<button onclick="refreshProof(${c.idx}, this)"
               title="將現有修改重新套用至更新後的文字 — 不會呼叫模型">↻ 重新整理</button>` : ""}
             <button class="secondary" onclick="runProof(${c.idx}, this)">
-              ${c.status === "unproofed" ? "校對" : "重新執行"}</button>
+              ${c.status === "unproofed" ? t("校對") : t("重新執行")}</button>
             ${c.status === "review" || c.status === "rejected"
-              ? `<button onclick="reviewProof(${c.idx}, true)">接受</button>` : ""}
+              ? T`<button onclick="reviewProof(${c.idx}, true)">接受</button>` : ""}
             ${c.status === "review" || c.status === "accepted"
-              ? `<button class="secondary" onclick="reviewProof(${c.idx}, false)">拒絕</button>` : ""}
+              ? T`<button class="secondary" onclick="reviewProof(${c.idx}, false)">拒絕</button>` : ""}
           </span>
         </div>
-        ${c.status === "stale" ? `<div class="meta" style="color:#b45309;margin:.3rem 0 0">
+        ${c.status === "stale" ? T`<div class="meta" style="color:#b45309;margin:.3rem 0 0">
            章節文字在此次校對後已有變更。若僅是重新建置（標記、重排、標題），點擊 <b>↻ 重新整理</b> 即可立即重新套用您的修改 —
            僅在用語文字實際變更時才需要 <b>重新執行</b>。</div>` : ""}
-        ${c.status === "accepted" ? `<div class="meta" style="color:#166534;margin:.3rem 0 0">
+        ${c.status === "accepted" ? T`<div class="meta" style="color:#166534;margin:.3rem 0 0">
            已接受 — 下次建置 EPUB/PDF 時將使用此校對後的文字</div>`
-         : c.status === "review" ? `<div class="meta" style="margin:.3rem 0 0">
+         : c.status === "review" ? T`<div class="meta" style="margin:.3rem 0 0">
            審閱中 — 在您接受之前，建置將繼續使用未校對的文字</div>` : ""}
         ${d && d.findings?.length
           ? `<div style="margin-top:.5rem">${d.findings.map((f, fi) =>
               findingHtml(f, c.idx, fi)).join("")}</div>`
-          : d ? `<div class="meta" style="margin-top:.4rem">無問題 — 沒有發現</div>` : ""}
+          : d ? T`<div class="meta" style="margin-top:.4rem">無問題 — 沒有發現</div>` : ""}
       </div>`;
     };
     api(`/projects/${name}/proof`).then(async r => {
       if (r.needs_pipeline) {
-        body.innerHTML = `<div class="card" style="text-align:center;padding:2rem">
+        body.innerHTML = T`<div class="card" style="text-align:center;padding:2rem">
           <h2 style="margin-top:0">尚無內容可校對</h2>
           <p class="meta">此書尚未辨識文字。校對是針對處理流程產生的書籍文字進行 — 請先執行處理流程。</p>
           <button style="font-size:1rem;padding:.6rem 1.3rem"
@@ -1454,13 +1464,13 @@ function renderTab(tab, p) {
       const details = await Promise.all(chs.map(c =>
         c.status === "unproofed" ? null
           : api(`/projects/${name}/proof/${c.idx}`).catch(() => null)));
-      body.innerHTML = `<div class="card">
+      body.innerHTML = T`<div class="card">
         <h2>校對</h2>
         <div class="meta" style="margin-bottom:.6rem">
           運作方式：檢查每個章節並傳回一系列微調修改。安全的修改會<b>自動套用</b>至校對本 —「復原」可還原任何單一項目；不明確的項目會等待您點擊「套用」；一般附註則無需套用。這些操作都不會更動頁面 OCR 文字，且在您於章節點擊<b>接受</b>之前，都不會寫入已建置的書籍中。</div>
         <div class="row">
           <button onclick="proofAll()">校對所有待處理項目</button>
-          ${chs.some(c => c.status === "stale") ? `<button onclick="refreshAllStale(this)"
+          ${chs.some(c => c.status === "stale") ? T`<button onclick="refreshAllStale(this)"
             title="一次將現有修改重新套用至所有過期的章節 — 不會呼叫模型">↻ 重新整理所有過期章節 (${chs.filter(c => c.status === "stale").length})</button>` : ""}
           <button class="secondary" onclick="rereadAllStuck()"
             title="從頁面影像重新辨識每個卡住的頁面關聯發現；安全的修改會自動套用，方便您專注於剩餘項目">🔎 重新辨識所有卡住頁面</button>
@@ -1475,14 +1485,14 @@ function renderTab(tab, p) {
     // one download row, with WHY it's stale when it is
     const dlItem = (o) => `<li><a href="/api/projects/${name}/file/out/${o.name}">${o.name}</a>
         ${o.stale
-          ? `<span class="badge acceptable" title="${esc((o.reasons || []).join("; "))}">已過期 — 請重新建置</span>
+          ? T`<span class="badge acceptable" title="${esc((o.reasons || []).join("; "))}">已過期 — 請重新建置</span>
              <span class="meta" style="margin-left:.3rem">${esc((o.reasons || []).join("; "))}</span>`
-          : `<span class="badge ok">最新</span>`}
-        ${o.built_at ? `<span class="meta" style="margin-left:.4rem"
+          : T`<span class="badge ok">最新</span>`}
+        ${o.built_at ? T`<span class="meta" style="margin-left:.4rem"
             title="此檔案建置的時間">建置於 ${new Date(o.built_at * 1000)
             .toLocaleString([], {month: "short", day: "numeric",
                                  hour: "2-digit", minute: "2-digit"})}</span>` : ""}
-        ${o.name.endsWith(".epub") ? `<a href="/static/reader.html?project=${
+        ${o.name.endsWith(".epub") ? T`<a href="/static/reader.html?project=${
             encodeURIComponent(name)}&file=${encodeURIComponent(o.name)}"
           style="margin-left:.6rem">📖 在瀏覽器中閱讀</a>` : ""}</li>`;
     const dlList = (items, empty) => items.length
@@ -1490,7 +1500,7 @@ function renderTab(tab, p) {
     const bookOuts = (p.outputs || []).filter(o => !o.name.endsWith(".m4b"));
     const audioOuts = (p.outputs || []).filter(o => o.name.endsWith(".m4b"));
     body.innerHTML =
-      (staleN ? `<div class="card" style="border:2px solid #d97706;background:#fffbeb;
+      (staleN ? T`<div class="card" style="border:2px solid #d97706;background:#fffbeb;
          display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
         <div style="flex:1;min-width:14rem">
           <b style="color:#b45309">⚠ ${staleN} 個已建置的檔案已過期</b>
@@ -1498,7 +1508,7 @@ function renderTab(tab, p) {
         </div>
         <button onclick="buildFmt('epub')">↻ 重新建置 EPUB</button>
       </div>` : "")
-      + `<div class="card"><h2>📖 書籍檔案 <span class="meta">(EPUB / PDF / Markdown)</span></h2>
+      + T`<div class="card"><h2>📖 書籍檔案 <span class="meta">(EPUB / PDF / Markdown)</span></h2>
       <div class="row" style="margin-bottom:.6rem">
         <label style="margin:0">目標裝置</label>
         <select id="build-device" style="width:auto">
@@ -1509,25 +1519,25 @@ function renderTab(tab, p) {
       </div>
       <div class="row">
         ${["epub","pdf-facsimile","pdf","markdown"].map(f =>
-          `<button onclick="buildFmt('${f}')">建置 ${f}</button>`).join("")}
+          T`<button onclick="buildFmt('${f}')">建置 ${f}</button>`).join("")}
         ${p.latex_available
-          ? `<button onclick="buildFmt('pdf-latex')"
+          ? T`<button onclick="buildFmt('pdf-latex')"
                title="透過 pandoc + XeLaTeX 排版的高品質 PDF（符合目標裝置規範）"
                >建置 pdf (LaTeX ✨)</button>`
-          : `<button disabled style="opacity:.55"
+          : T`<button disabled style="opacity:.55"
                title="選用的高品質 PDF — 請安裝 pandoc + XeLaTeX 以啟用（詳見 README）"
                >pdf (LaTeX) — 需要 pandoc+xelatex</button>`}
       </div>
       <div class="meta" style="margin-top:.3rem">pdf (LaTeX) 為選用項目，提供最佳排版品質的 PDF；上方的標準 <b>pdf</b> 則無需額外工具。</div>
       <h3 style="margin:1rem 0 .3rem">下載</h3>
-      ${dlList(bookOuts, "尚未建置任何書籍檔案")}
+      ${dlList(bookOuts, t("尚未建置任何書籍檔案"))}
       </div>
       <div class="card"><h2>🎧 有聲書</h2>
       <div class="meta" style="margin-bottom:.5rem">使用本機聲音模型朗讀校對後的書籍文字（資料絕不離開您的電腦），並封裝為包含章節標記與封面的 <b>.m4b</b> 檔案。整本書需耗時數小時 — 在 ⚙ 工作佇列中執行，中斷可繼續。章節會被快取，因此修改後重新建置僅會重新朗讀變更的部分。</div>
       <div class="row">
         ${p.tts_available
-          ? `<button onclick="buildAudiobook(this)">🎧 建置有聲書 (m4b)</button>`
-          : `<button disabled style="opacity:.55"
+          ? T`<button onclick="buildAudiobook(this)">🎧 建置有聲書 (m4b)</button>`
+          : T`<button disabled style="opacity:.55"
                title="請安裝本機語音引擎：pip install chatterbox-tts">
                有聲書 — 需要 chatterbox-tts</button>`}
         <label style="margin:0 0 0 .4rem">聲音</label>
@@ -1597,7 +1607,7 @@ function renderTab(tab, p) {
         </div>
       </div>
       <h3 style="margin:1rem 0 .3rem">下載</h3>
-      ${dlList(audioOuts, "尚未建置任何有聲書")}
+      ${dlList(audioOuts, t("尚未建置任何有聲書"))}
       </div>`;
     if (p.tts_available) { fetchAbEstimate(); fetchCast(); }
   }
@@ -1608,7 +1618,7 @@ async function runPipeline() {
   try { if (window.Notification && Notification.permission === "default")
           Notification.requestPermission(); } catch {}
   await api(`/projects/${current}/run` + (prov ? `?provider=${prov}` : ""), {method:"POST"});
-  $("runbtn").disabled = true; $("runbtn").textContent = "執行中…";
+  $("runbtn").disabled = true; $("runbtn").textContent = t("執行中…");
   attachEvents(current);
   startProgress(current);
 }
@@ -1625,9 +1635,9 @@ function startProgress(name) {
     // the tab is in the background, so it doesn't nag while you're watching)
     if (_wasRunning[name] && !p.running) {
       if (document.hidden && window.Notification && Notification.permission === "granted")
-        new Notification("FlipScan", {body: `處理流程已完成 — ${p.book_title || name}`});
+        new Notification("FlipScan", {body: T`處理流程已完成 — ${p.book_title || name}`});
       const s = $("global-status"); if (s) { s.style.display = "block";
-        s.textContent = "✓ 處理流程已完成"; setTimeout(() => s.style.display = "none", 6000); }
+        s.textContent = t("✓ 處理流程已完成"); setTimeout(() => s.style.display = "none", 6000); }
     }
     _wasRunning[name] = !!p.running;
     const chip = $("global-status");
@@ -1636,9 +1646,9 @@ function startProgress(name) {
         chip.style.display = "block";
         chip.textContent = p.detail && p.detail.total
           ? `⚙ ${p.current} ${Math.round(100 * p.detail.done / p.detail.total)}%`
-            + (p.eta_seconds > 90 ? ` · ~${Math.round(p.eta_seconds / 60)} 分鐘`
-               : p.eta_seconds != null ? ` · ~${p.eta_seconds} 秒` : "")
-          : `⚙ ${p.current ? lbl(p.current) : "執行中"}…`;
+            + (p.eta_seconds > 90 ? T` · ~${Math.round(p.eta_seconds / 60)} 分鐘`
+               : p.eta_seconds != null ? T` · ~${p.eta_seconds} 秒` : "")
+          : `⚙ ${p.current ? lbl(p.current) : t("執行中")}…`;
       } else {
         chip.style.display = "none";
       }
@@ -1646,7 +1656,7 @@ function startProgress(name) {
     const rb = $("runbtn");
     if (rb) {
       rb.disabled = p.running;
-      rb.textContent = p.running ? "執行中…" : "執行 / 繼續";
+      rb.textContent = p.running ? t("執行中…") : t("執行 / 繼續");
     }
     // live stage chips
     for (const [s, st] of Object.entries(p.stages)) {
@@ -1662,12 +1672,12 @@ function startProgress(name) {
       $("ptext").textContent =
         `${lbl(p.current)}: ${p.detail.done} / ${p.detail.total} ${lbl(p.detail.unit)} (${pct}%)`;
       $("peta").textContent = p.eta_seconds == null ? "" :
-        p.eta_seconds > 90 ? `剩餘約 ${Math.round(p.eta_seconds / 60)} 分鐘`
-                           : `剩餘約 ${p.eta_seconds} 秒`;
+        p.eta_seconds > 90 ? T`剩餘約 ${Math.round(p.eta_seconds / 60)} 分鐘`
+                           : T`剩餘約 ${p.eta_seconds} 秒`;
     } else if (p.running) {
       box.style.display = "block";
       $("pfill").style.width = "100%";
-      $("ptext").textContent = p.current ? `${p.current}: 處理中…` : "啟動中…";
+      $("ptext").textContent = p.current ? T`${p.current}: 處理中…` : t("啟動中…");
       $("peta").textContent = "";
     } else {
       box.style.display = "none";  // keep polling: a run may start elsewhere
@@ -1702,29 +1712,29 @@ async function reflowMd(pageId) {
     r = await api(`/projects/${current}/pages/${pageId}/reflow`, {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({markdown: el.value})});
-  } catch (e) { alert("重新排列文字失敗: " + e.message); return; }
+  } catch (e) { alert(t("重新排列文字失敗: ") + e.message); return; }
   if (r.markdown === el.value) {
     const b = $("mdsave-" + pageId);
-    if (b) { const t = b.textContent; b.textContent = "文字已重新排列 ✓";
-             setTimeout(() => b.textContent = t, 1400); }
+    if (b) { const prev = b.textContent; b.textContent = t("文字已重新排列 ✓");
+             setTimeout(() => b.textContent = prev, 1400); }
     return;
   }
   el.value = r.markdown;
   el.dataset.dirty = 1;
   const b = $("mdsave-" + pageId);
-  if (b) { b.textContent = "儲存 Markdown *"; b.disabled = false; }
+  if (b) { b.textContent = t("儲存 Markdown *"); b.disabled = false; }
 }
 
 async function saveMd(pageId) {
   const btn = $("mdsave-" + pageId);
   try { await api(`/projects/${current}/pages/${pageId}/md`, {
     method:"PUT", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({markdown: $("md-" + pageId).value})}); } catch (e) { alert('儲存失敗: ' + e.message); return; }
+    body: JSON.stringify({markdown: $("md-" + pageId).value})}); } catch (e) { alert(t('儲存失敗: ') + e.message); return; }
   delete $("md-" + pageId).dataset.dirty;
   if (btn) {
-    btn.textContent = "✓ 已儲存";
+    btn.textContent = t("✓ 已儲存");
     btn.disabled = true;
-    setTimeout(() => { btn.textContent = "儲存 Markdown"; btn.disabled = false; }, 1800);
+    setTimeout(() => { btn.textContent = t("儲存 Markdown"); btn.disabled = false; }, 1800);
   }
 }
 
@@ -1735,8 +1745,8 @@ async function patchPage(pageId) {
   fd.append("photo", input.files[0]);
   const r = await fetch(`/api/projects/${current}/pages/${pageId}/patch`,
                         {method:"POST", body: fd});
-  if (!r.ok) { alert("補拍失敗"); return; }
-  if (confirm("照片已替換。是否立即執行處理流程以重新辨識？")) {
+  if (!r.ok) { alert(t("補拍失敗")); return; }
+  if (confirm(t("照片已替換。是否立即執行處理流程以重新辨識？"))) {
     await api(`/projects/${current}/run`, {method:"POST"});
   }
   openProject(current, "pages");
@@ -1745,7 +1755,7 @@ async function patchPage(pageId) {
 async function setRotate(vid, upsideDown) {
   await api(`/projects/${current}/videos/${vid}?rotate=${upsideDown ? 180 : 0}`,
             {method:"PUT"});
-  if (confirm("方向已儲存。是否立即重新執行處理流程以重新處理該影片的頁面？")) {
+  if (confirm(t("方向已儲存。是否立即重新執行處理流程以重新處理該影片的頁面？"))) {
     await api(`/projects/${current}/run`, {method:"POST"});
   }
   openProject(current);
@@ -1760,15 +1770,15 @@ async function addVideoToProject() {
   fd.append("video", input.files[0]);
   try {
     const up = await uploadXHR(`/api/projects/${current}/videos`, fd,
-                    pct => btn.textContent = pct < 100 ? `上傳中 ${pct}%` : "處理中…");
+                    pct => btn.textContent = pct < 100 ? T`上傳中 ${pct}%` : t("處理中…"));
     const j = await waitForJob(up.job_id, line => btn.textContent = line.slice(0, 40));
     const vid = j.result && j.result.id;
     // orientation: auto-detected during processing unless the user knows
     const o = prompt(
-      "影片已新增。\n\n影片是否上下顛倒？\n" +
-      "  a = 自動偵測（建議 — 處理期間檢查）\n" +
-      "  y = 是，上下顛倒\n" +
-      "  n = 否，方向正常", "a");
+      t("影片已新增。\n\n影片是否上下顛倒？\n") +
+      t("  a = 自動偵測（建議 — 處理期間檢查）\n") +
+      t("  y = 是，上下顛倒\n") +
+      t("  n = 否，方向正常"), "a");
     if (o && vid) {
       const v = o.trim().toLowerCase();
       if (v === "y") await api(`/projects/${current}/videos/${vid}?rotate=180`,
@@ -1777,10 +1787,10 @@ async function addVideoToProject() {
                                     {method: "PUT"});
       // "a" (or anything else): leave unset — preprocess auto-detects
     }
-    if (confirm("是否立即執行處理流程以合併其頁面？")) {
+    if (confirm(t("是否立即執行處理流程以合併其頁面？"))) {
       await api(`/projects/${current}/run`, {method:"POST"});
     }
-  } catch (e) { alert("新增影片失敗: " + e.message); }
+  } catch (e) { alert(t("新增影片失敗: ") + e.message); }
   openProject(current, "media");
 }
 
@@ -1792,16 +1802,16 @@ async function addEpubToProject() {
   const fd = new FormData();
   fd.append("ebook", input.files[0]);
   try {
-    btn.textContent = "上傳中…";
+    btn.textContent = t("上傳中…");
     const up = await uploadXHR(`/api/projects/${current}/epub`, fd,
                     pct => btn.textContent = pct < 100
-                      ? `上傳中 ${pct}%` : "匯入中…");
+                      ? T`上傳中 ${pct}%` : t("匯入中…"));
     const j = await waitForJob(up.job_id, line => btn.textContent = line.slice(0, 40));
     const n = j.result && j.result.pages;
-    alert(`已匯入 ${n} 個章節 — 文字內容已經很乾淨，因此不需要`
-      + `執行處理流程。請前往頁面分頁進行編輯，或前往輸出分頁`
-      + `重新匯出或建立有聲書。`);
-  } catch (e) { alert("EPUB 匯入失敗: " + e.message); }
+    alert(T`已匯入 ${n} 個章節 — 文字內容已經很乾淨，因此不需要`
+      + T`執行處理流程。請前往頁面分頁進行編輯，或前往輸出分頁`
+      + T`重新匯出或建立有聲書。`);
+  } catch (e) { alert(t("EPUB 匯入失敗: ") + e.message); }
   openProject(current, "pages");
 }
 
@@ -1813,32 +1823,32 @@ async function addPdfToProject() {
   const fd = new FormData();
   fd.append("pdf", input.files[0]);
   try {
-    btn.textContent = "上傳中…";
+    btn.textContent = t("上傳中…");
     const up = await uploadXHR(`/api/projects/${current}/pdf`, fd,
                     pct => btn.textContent = pct < 100
-                      ? `上傳中 ${pct}%` : "匯入中…");
+                      ? T`上傳中 ${pct}%` : t("匯入中…"));
     // rendering every page runs on the worker now — poll it (survives a
     // closed tab; also visible in the job-queue panel)
     const j = await waitForJob(up.job_id, line => btn.textContent = line.slice(0, 40));
     const pages = j.result && j.result.pages;
-    if (confirm(`已從 PDF 匯入 ${pages} 個頁面。是否立即執行處理流程` +
-                `以進行辨識？`)) {
+    if (confirm(T`已從 PDF 匯入 ${pages} 個頁面。是否立即執行處理流程` +
+                T`以進行辨識？`)) {
       await api(`/projects/${current}/run`, {method:"POST"});
     }
-  } catch (e) { alert("PDF 匯入失敗: " + e.message); }
+  } catch (e) { alert(t("PDF 匯入失敗: ") + e.message); }
   openProject(current, "media");
 }
 async function addPagePhoto() {
   const input = $("addpage-file");
-  if (!input.files.length) { alert("請先選擇相片"); return; }
+  if (!input.files.length) { alert(t("請先選擇相片")); return; }
   const fd = new FormData();
   fd.append("photo", input.files[0]);
   const pos = $("addpage-pos").value, cover = $("addpage-cover").checked;
   const r = await fetch(
     `/api/projects/${current}/pages/add?position=${pos}&cover=${cover}`,
     {method:"POST", body: fd});
-  if (!r.ok) { alert("新增頁面失敗"); return; }
-  if (confirm("頁面已新增。要立即執行處理流程進行辨識嗎？")) {
+  if (!r.ok) { alert(t("新增頁面失敗")); return; }
+  if (confirm(t("頁面已新增。要立即執行處理流程進行辨識嗎？"))) {
     await api(`/projects/${current}/run`, {method:"POST"});
   }
   openProject(current, "media");
@@ -1859,11 +1869,11 @@ async function buildAudiobook(btn, chaptersCsv = "", headChars = 0) {
   const cast = $("ab-cast")?.checked ? "&use_cast=true" : "";
   const chs = (chaptersCsv ? `&chapters=${chaptersCsv}` : "")
     + (headChars ? `&head_chars=${headChars}` : "");
-  if (btn) { btn.disabled = true; btn.textContent = "已排入佇列…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("已排入佇列…"); }
   try {
     const { job_id } = await api(`/projects/${current}/build-audiobook`
       + `?voice=${encodeURIComponent(voice)}&speed=${speed}${cast}${chs}`, {method: "POST"});
-    if (btn) btn.textContent = "🎧 旁白朗讀中…（查看 ⚙ 佇列）";
+    if (btn) btn.textContent = t("🎧 旁白朗讀中…（查看 ⚙ 佇列）");
     await waitForJob(job_id);
   } catch (e) { alert(e.message); openProject(current, "output"); return; }
   openProject(current, "output");
@@ -1884,10 +1894,10 @@ function updateAbEstimate() {
   if (!e || !e.chars) { el.textContent = ""; return; }
   const speed = parseFloat($("ab-speed")?.value || "1");
   const fmt = (m) => m >= 90 ? `${(m / 60).toFixed(1)} h` : `${Math.round(m)} min`;
-  el.innerHTML = `預估旁白長度：<b>${fmt(e.audio_min / speed)}</b>`
-    + (speed !== 1 ? `（${speed}×）` : "")
-    + ` · GPU 生成約需 <b>${fmt(e.synth_min)}</b>`
-    + (speed !== 1 ? ` <span title="倍速設定於合成後套用">（調整倍速不影響生成時間）</span>` : "");
+  el.innerHTML = T`預估旁白長度：<b>${fmt(e.audio_min / speed)}</b>`
+    + (speed !== 1 ? T`（${speed}×）` : "")
+    + T` · GPU 生成約需 <b>${fmt(e.synth_min)}</b>`
+    + (speed !== 1 ? T` <span title="倍速設定於合成後套用">（調整倍速不影響生成時間）</span>` : "");
 }
 
 // ---- full-cast narration: character analysis + per-character voice casting
@@ -1902,40 +1912,40 @@ async function fetchCast() {
   const chk = $("ab-cast");
   const names = Object.keys(c.characters || {});
   if (!c.exists) {
-    el.innerHTML = `<div class="row">
+    el.innerHTML = T`<div class="row">
       <button class="secondary" onclick="analyzeCast(this)">🎭 分析角色…</button>
       <span class="meta" style="margin:0">找出本書中說話的角色（每個章節由文字模型分析一次），讓對話引文能以不同的聲音朗讀</span></div>`;
     return;
   }
   if (chk) chk.disabled = !names.some(n => (c.characters[n].voice || "") !== "");
-  const opt = (sel) => `<option value="">— 由旁白朗讀 —</option>`
-    + (bookVoices.length ? `<optgroup label="本書（🪄 產生的）">`
+  const opt = (sel) => T`<option value="">— 由旁白朗讀 —</option>`
+    + (bookVoices.length ? T`<optgroup label="本書（🪄 產生的）">`
         + bookVoices.map(v => `<option ${sel === v ? "selected" : ""} value="${esc(v)}">${esc(v)}</option>`).join("")
         + `</optgroup>` : "")
-    + (voices.length ? `<optgroup label="聲音庫（所有書）">`
+    + (voices.length ? T`<optgroup label="聲音庫（所有書）">`
         + voices.map(v => `<option ${sel === v && !bookVoices.includes(v) ? "selected" : ""} value="${esc(v)}">${esc(v)}</option>`).join("")
         + `</optgroup>` : "");
   const failed = c.failed_chapters || [];
   const voicedN = names.filter(n => (c.characters[n].voice || "") !== "").length;
   // a 50-row cast buries the Downloads list — collapse it behind a summary
   // (open state survives the re-renders that voice assignments trigger)
-  el.innerHTML = `<details ${window._castOpen ? "open" : ""}
+  el.innerHTML = T`<details ${window._castOpen ? "open" : ""}
       ontoggle="window._castOpen = this.open"
       style="border:1px solid var(--line);border-radius:8px;padding:.45rem .9rem">
     <summary style="cursor:pointer;font-weight:600">🎭 角色配音
       <span class="meta" style="font-weight:400">— ${names.length} 位說話角色${names.length === 1 ? "" : ""}${voicedN
-          ? `，其中 ${voicedN} 位已設定聲音` : ""}${failed.length
-          ? ` · <span style="color:#dc2626">⚠ ${failed.length} 個章節${
+          ? T`，其中 ${voicedN} 位已設定聲音` : ""}${failed.length
+          ? T` · <span style="color:#dc2626">⚠ ${failed.length} 個章節${
               failed.length > 1 ? "" : ""}失敗</span>` : ""}</span></summary>
     <div class="row" style="margin:.5rem 0 .3rem">
       <span class="meta" style="margin:0">先指派聲音，建置前請勾選上方的「角色配音」</span>
       <span style="margin-left:auto"></span>
-      ${names.length - voicedN > 0 ? `<button
+      ${names.length - voicedN > 0 ? T`<button
         style="padding:.15rem .6rem;font-size:.75rem"
         title="🪄 為每位尚未指定聲音的角色產生聲音
 （單一批次工作，不影響既有指派 — 每個聲音約需一分鐘）"
         onclick="generateAllVoices(this)">🪄 產生所有缺少聲音 (${names.length - voicedN})</button>` : ""}
-      ${(c.chapter_stats || []).some(s => s.voiced) ? `<button
+      ${(c.chapter_stats || []).some(s => s.voiced) ? T`<button
         style="padding:.15rem .6rem;font-size:.75rem"
         title="僅建置含有最多已配音引文的章節，在製作整本書之前先試聽
 完整配音效果 — 此章節的音訊會被快取並在完整建置時重複使用"
@@ -1943,21 +1953,21 @@ async function fetchCast() {
       <button class="secondary" style="padding:.15rem .6rem;font-size:.75rem"
         onclick="analyzeCast(this)">↻ 重新分析</button>
     </div>
-    ${failed.length ? `<div class="row" style="background:#fef2f2;border:1px solid #dc2626;
+    ${failed.length ? T`<div class="row" style="background:#fef2f2;border:1px solid #dc2626;
         border-radius:6px;padding:.35rem .7rem;margin:.3rem 0">
       <span class="meta" style="margin:0;color:#dc2626">⚠ 有
         ${failed.length} 個章節${failed.length > 1 ? "" : ""}分析失敗（${esc(failed.slice(0, 3).join(", "))}${failed.length > 3 ? "…" : ""}）—
-        在重試前${failed.length > 1 ? "均保持" : "保持"}僅由旁白朗讀</span>
+        在重試前${failed.length > 1 ? t("均保持") : t("保持")}僅由旁白朗讀</span>
       <button style="margin-left:auto;padding:.15rem .6rem;font-size:.75rem"
         onclick="analyzeCast(this, true)">↻ 僅重試失敗項目</button>
     </div>` : ""}
     ${names.length ? names.sort((a, b) => c.characters[b].quotes - c.characters[a].quotes)
-      .map(n => { const ch = c.characters[n]; return `
+      .map(n => { const ch = c.characters[n]; return T`
       <div class="row" style="border-top:1px solid var(--line);padding:.4rem 0">
         <div style="flex:1;min-width:12rem">
           <b>${esc(n)}</b> <span class="meta">· ${ch.quotes} 則對話引文${ch.quotes === 1 ? "" : ""}</span>
           <div class="meta" title="${esc((ch.samples || []).map(s => "“" + s + "”").join("\n"))}">${esc(ch.description || "")}</div>
-          ${ch.sounds_like ? `<div class="meta" style="color:var(--accent)"
+          ${ch.sounds_like ? T`<div class="meta" style="color:var(--accent)"
              title="僅為選角提示 — 請從聲音庫中挑選或錄製合適的聲音">
              💡 ${esc(ch.sounds_like)}</div>` : ""}
         </div>
@@ -1966,7 +1976,7 @@ async function fetchCast() {
         <button class="secondary" style="padding:.15rem .5rem${ch.voice_prompt
             ? ";color:var(--accent)" : ""}"
           title="編輯 🪄 提供給聲音生成器的確切描述${
-            ch.voice_prompt ? "（目前已自訂）" : ""}"
+            ch.voice_prompt ? t("（目前已自訂）") : ""}"
           onclick="editVoicePrompt('${esc(n)}')">✎</button>
         <button class="secondary" style="padding:.15rem .5rem"
           title="🪄 根據角色描述為其生成聲音
@@ -1982,7 +1992,7 @@ async function fetchCast() {
           title="試聽此角色指派的聲音朗讀其真實對話引文"
           onclick="previewVoice(this.parentElement.querySelector('select').value || ($('ab-voice')?.value ?? ''), '${esc(n)}', this)">▶</button>
       </div>`; }).join("")
-      : `<div class="meta">找不到歸屬角色的對話引文 — 本書純由旁白朗讀</div>`}
+      : T`<div class="meta">找不到歸屬角色的對話引文 — 本書純由旁白朗讀</div>`}
   </details>`;
 }
 
@@ -1995,9 +2005,9 @@ async function editVoicePrompt(character) {
   if (!ch) return;
   const cur = ch.gen_prompt || "";
   const next = prompt(
-    `「${character}」的聲音生成描述 — 🪄 將逐字使用此文字。\n`
-    + `請描述年齡、性別、音調、語速、語氣、口音；提及「very clear audio」。\n`
-    + `（清除文字可還原為自動組合的描述。）`, cur);
+    T`「${character}」的聲音生成描述 — 🪄 將逐字使用此文字。\n`
+    + T`請描述年齡、性別、音調、語速、語氣、口音；提及「very clear audio」。\n`
+    + T`（清除文字可還原為自動組合的描述。）`, cur);
   if (next === null || next === cur) return;
   try {
     await api(`/projects/${current}/audiobook-cast/voice-prompt`
@@ -2018,7 +2028,7 @@ async function previewVoice(voice, character, btn) {
       + `&character=${encodeURIComponent(character || "")}`, {method: "POST"});
     const j = await waitForJob(job_id);
     const f = j.result?.file;
-    if (!f) throw new Error("沒有產生預覽");
+    if (!f) throw new Error(t("沒有產生預覽"));
     let a = $("preview-audio");
     if (!a) {
       a = document.createElement("audio");
@@ -2031,7 +2041,7 @@ async function previewVoice(voice, character, btn) {
     }
     a.src = `/api/voice-previews/${encodeURIComponent(f)}`;
     a.play();
-  } catch (e) { alert("預覽失敗：" + e.message); }
+  } catch (e) { alert(t("預覽失敗：") + e.message); }
   if (btn) { btn.disabled = false; btn.textContent = orig; }
 }
 
@@ -2043,10 +2053,10 @@ async function sampleCastChapter(btn) {
   catch (e) { alert(e.message); return; }
   const best = (c.chapter_stats || []).reduce(
     (a, s) => (s.voiced > (a?.voiced || 0) ? s : a), null);
-  if (!best) { alert("尚無角色配音引文 — 請先指派聲音。"); return; }
-  if (!confirm(`產生全角色配音快速試聽 — 「${best.title}」的前 5 分鐘？\n\n`
-    + `（整章共有 ${best.voiced} 句角色配音引文；`
-    + `約需 6 分鐘 GPU 時間。若要處理完整章節或整本書，請勾選 🎭 後使用「建立有聲書」。）`)) return;
+  if (!best) { alert(t("尚無角色配音引文 — 請先指派聲音。")); return; }
+  if (!confirm(T`產生全角色配音快速試聽 — 「${best.title}」的前 5 分鐘？\n\n`
+    + T`（整章共有 ${best.voiced} 句角色配音引文；`
+    + T`約需 6 分鐘 GPU 時間。若要處理完整章節或整本書，請勾選 🎭 後使用「建立有聲書」。）`)) return;
   const chk = $("ab-cast");
   if (chk && !chk.disabled) chk.checked = true;   // a cast sample implies cast
   buildAudiobook(btn, String(best.idx), 6100);
@@ -2059,12 +2069,12 @@ async function generateAllVoices(btn) {
   catch (e) { alert(e.message); return; }
   const missing = Object.entries(c.characters || {})
     .filter(([, ch]) => !(ch.voice || "").trim());
-  if (!missing.length) { alert("所有角色皆已具備聲音。"); return; }
-  if (!confirm(`為 ${missing.length} 位角色生成聲音？\n\n`
-    + `GPU 每個聲音約需 1 分鐘（單一批次工作 — 可在 ⚙ 佇列中取消，`
-    + `已完成的聲音將保留）。已完成配音的角色不會受到影響。`)) return;
+  if (!missing.length) { alert(t("所有角色皆已具備聲音。")); return; }
+  if (!confirm(T`為 ${missing.length} 位角色生成聲音？\n\n`
+    + T`GPU 每個聲音約需 1 分鐘（單一批次工作 — 可在 ⚙ 佇列中取消，`
+    + T`已完成的聲音將保留）。已完成配音的角色不會受到影響。`)) return;
   const orig = btn?.textContent;
-  if (btn) { btn.disabled = true; btn.textContent = "生成中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("生成中…"); }
   try {
     const { job_id } = await api(`/projects/${current}/audiobook-cast/generate-all-voices`,
                                  {method: "POST"});
@@ -2083,7 +2093,7 @@ async function generateCastVoice(character, btn) {
     const { job_id } = await api(`/projects/${current}/audiobook-cast/generate-voice`
       + `?character=${encodeURIComponent(character)}`, {method: "POST"});
     await waitForJob(job_id);
-  } catch (e) { alert("聲音生成失敗：" + e.message); }
+  } catch (e) { alert(t("聲音生成失敗：") + e.message); }
   if (btn) { btn.disabled = false; btn.textContent = orig; }
   // voice list changed too — refresh project (voices) then the cast table
   try { window._proj = await api(`/projects/${current}`); } catch {}
@@ -2091,7 +2101,7 @@ async function generateCastVoice(character, btn) {
 }
 
 async function analyzeCast(btn, onlyFailed = false) {
-  if (btn) { btn.disabled = true; btn.textContent = "分析中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("分析中…"); }
   try {
     const { job_id } = await api(`/projects/${current}/audiobook-cast/analyze`
       + (onlyFailed ? "?only_failed=true" : ""), {method: "POST"});
@@ -2113,7 +2123,7 @@ async function uploadVoice() {
   const input = $("voice-file");
   if (!input.files.length) return;
   const name = ($("vrec-name")?.value || "").trim()
-    || prompt("為此聲音命名（將存入共用資料庫）：") || "";
+    || prompt(t("為此聲音命名（將存入共用資料庫）：")) || "";
   if (!name.trim()) { input.value = ""; return; }
   const fd = new FormData();
   fd.append("sample", input.files[0]);
@@ -2121,7 +2131,7 @@ async function uploadVoice() {
     const r = await fetch(`/api/voices?voice_name=${encodeURIComponent(name)}`,
                           {method: "POST", body: fd});
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-  } catch (e) { alert("聲音上傳失敗：" + e.message); return; }
+  } catch (e) { alert(t("聲音上傳失敗：") + e.message); return; }
   await _afterVoiceSaved(name);
   closeVoiceRecorder();
   openProject(current, "output");
@@ -2139,9 +2149,9 @@ async function setDefaultVoice(btn) {
 async function deleteVoice() {
   const sel = $("ab-voice");
   const v = sel?.value;
-  if (!v) { alert("無法刪除內建旁白 — 請選擇複製的聲音。"); return; }
-  if (!confirm(`要從資料庫刪除複製的聲音「${v}」嗎？\n\n`
-    + `已使用該聲音朗讀的書將保留其音訊。`)) return;
+  if (!v) { alert(t("無法刪除內建旁白 — 請選擇複製的聲音。")); return; }
+  if (!confirm(T`要從資料庫刪除複製的聲音「${v}」嗎？\n\n`
+    + T`已使用該聲音朗讀的書將保留其音訊。`)) return;
   try { await api(`/voices/${encodeURIComponent(v)}`, {method: "DELETE"}); }
   catch (e) { alert(e.message); return; }
   openProject(current, "output");
@@ -2158,18 +2168,18 @@ function openVoiceRecorder(forCharacter = "") {
   if (forCharacter && nameEl && !nameEl.value) nameEl.value = forCharacter;
   const note = $("vrec-note");
   if (forCharacter && note)
-    note.textContent = `將自動指派為「${forCharacter}」的角色配音`;
+    note.textContent = T`將自動指派為「${forCharacter}」的角色配音`;
   if (!navigator.mediaDevices?.getUserMedia) {
     // plain-http on the LAN: browsers block the mic. The server also listens
     // on https at port+1 — send the user there (one-time cert warning).
     const httpsUrl = `https://${location.hostname}:${(+location.port || 80) + 1}${location.pathname}${location.hash}`;
-    note.innerHTML = `麥克風需要 HTTPS：<a href="${httpsUrl}">切換至安全位址</a>（接受一次憑證警告）— 或 📁 上傳`;
+    note.innerHTML = T`麥克風需要 HTTPS：<a href="${httpsUrl}">切換至安全位址</a>（接受一次憑證警告）— 或 📁 上傳`;
   }
 }
 function closeVoiceRecorder() {
   voiceTarget = "";
   if (vrec?.rec?.state === "recording") vrec.rec.stop();
-  vrec?.stream?.getTracks().forEach(t => t.stop());
+  vrec?.stream?.getTracks().forEach(tr => tr.stop());
   clearInterval(vrec?.timer);
   vrec = null;
   $("voice-modal").style.display = "none";
@@ -2181,25 +2191,25 @@ async function toggleVoiceRec() {
   try {
     stream = await navigator.mediaDevices.getUserMedia(
       {audio: {echoCancellation: false, noiseSuppression: true}});
-  } catch (e) { alert("麥克風無法使用：" + e.message); return; }
+  } catch (e) { alert(t("麥克風無法使用：") + e.message); return; }
   const rec = new MediaRecorder(stream);
   vrec = {rec, stream, chunks: [], blob: null, t0: Date.now(), timer: null};
   rec.ondataavailable = e => vrec.chunks.push(e.data);
   rec.onstop = () => {
     clearInterval(vrec.timer);
-    vrec.stream.getTracks().forEach(t => t.stop());
+    vrec.stream.getTracks().forEach(tr => tr.stop());
     vrec.blob = new Blob(vrec.chunks, {type: rec.mimeType || "audio/webm"});
     const a = $("vrec-audio");
     a.src = URL.createObjectURL(vrec.blob);
     a.style.display = "";
     $("vrec-use").style.display = "";
-    btn.textContent = "↺ 重新錄音";
+    btn.textContent = t("↺ 重新錄音");
     const secs = (Date.now() - vrec.t0) / 1000;
     $("vrec-note").textContent = secs < 8
-      ? "時間偏短 — 15–30 秒複製效果更佳" : "";
+      ? t("時間偏短 — 15–30 秒複製效果更佳") : "";
   };
   rec.start();
-  btn.textContent = "■ 停止";
+  btn.textContent = t("■ 停止");
   $("vrec-use").style.display = "none";
   $("vrec-audio").style.display = "none";
   vrec.timer = setInterval(() => {
@@ -2225,17 +2235,17 @@ async function _afterVoiceSaved(name) {
 async function useVoiceRec() {
   if (!vrec?.blob) return;
   const name = ($("vrec-name")?.value || "").trim();
-  if (!name) { alert("請先為聲音命名 — 將儲存至共用資料庫。"); return; }
+  if (!name) { alert(t("請先為聲音命名 — 將儲存至共用資料庫。")); return; }
   const fd = new FormData();
   fd.append("sample", vrec.blob, "voice-recording.webm");
   const btn = $("vrec-use");
-  btn.disabled = true; btn.textContent = "儲存中…";
+  btn.disabled = true; btn.textContent = t("儲存中…");
   try {
     const r = await fetch(`/api/voices?voice_name=${encodeURIComponent(name)}`,
                           {method: "POST", body: fd});
     if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-  } catch (e) { alert("儲存聲音失敗：" + e.message); btn.disabled = false;
-                btn.textContent = "✓ 儲存至聲音資料庫"; return; }
+  } catch (e) { alert(t("儲存聲音失敗：") + e.message); btn.disabled = false;
+                btn.textContent = t("✓ 儲存至聲音資料庫"); return; }
   await _afterVoiceSaved(name);
   closeVoiceRecorder();
   openProject(current, "output");
@@ -2250,13 +2260,13 @@ async function startWizard() {
     const anyPages = (window._proj?.pages || []).some(x => !x.role);
     if (!anyPages) {
       const last = parseInt(prompt(
-        "拍照記錄整本書！\n最後一頁印製的頁碼是多少？") || "");
+        t("拍照記錄整本書！\n最後一頁印製的頁碼是多少？")) || "");
       if (!last || last < 1) return;
       items = Array.from({length: last}, (_, i) => ({
-        kind: "missing", number: i + 1, label: `第 ${i + 1} 頁`,
-        reasons: ["依序拍攝每一頁"]}));
+        kind: "missing", number: i + 1, label: T`第 ${i + 1} 頁`,
+        reasons: [t("依序拍攝每一頁")]}));
     } else {
-      alert("沒有需要補拍的內容 — 這本書看起來很完整！");
+      alert(t("沒有需要補拍的內容 — 這本書看起來很完整！"));
       return;
     }
   }
@@ -2271,7 +2281,7 @@ function startUnidentifiedWizard() {
                   && (pg.reasons || []).length)
     .map(pg => ({kind: "reshoot", page_id: pg.id, color: pg.color,
                  label: pg.id, reasons: pg.reasons}));
-  if (!items.length) { alert("沒有未辨識的問題頁面 — 太棒了。"); return; }
+  if (!items.length) { alert(t("沒有未辨識的問題頁面 — 太棒了。")); return; }
   wiz = {items, i: 0, done: 0, mode: "unidentified"};
   renderWizard();
 }
@@ -2285,10 +2295,10 @@ function renderWizard() {
          style="max-height:45vh;border:1px solid var(--line);border-radius:6px;
                 margin-bottom:1rem">` : "";
   const title = wiz.mode === "unidentified"
-    ? "在書中找到此頁" : `📖 ${esc(it.label)}`;
-  $("main").innerHTML = `
+    ? t("在書中找到此頁") : `📖 ${esc(it.label)}`;
+  $("main").innerHTML = T`
   <div class="card" style="max-width:34rem;margin:0 auto;text-align:center">
-    <div class="meta">${wiz.mode === "unidentified" ? "未辨識頁面" : "補拍"}
+    <div class="meta">${wiz.mode === "unidentified" ? t("未辨識頁面") : t("補拍")}
       精靈 · 第 ${wiz.i + 1} 項，共 ${wiz.items.length} 項 · 已處理 ${wiz.done} 項</div>
     <h2 style="font-size:${wiz.mode === "unidentified" ? "1.4" : "2.2"}rem;
         margin:.6rem 0">${title}</h2>
@@ -2301,21 +2311,21 @@ function renderWizard() {
     <button style="font-size:1.3rem;padding:1rem 2.2rem;width:100%"
             onclick="$('wiz-file').click()" id="wiz-btn">📷 拍照</button>
     <div class="row" style="margin-top:1rem;justify-content:center">
-      ${wiz.mode === "unidentified" ? `<button class="danger"
+      ${wiz.mode === "unidentified" ? T`<button class="danger"
          onclick="wizardHide()">無效內容 — 隱藏</button>` : ""}
       <button class="secondary" onclick="wiz.i++; renderWizard()">略過</button>
       <button class="secondary" onclick="finishWizard()">完成</button>
     </div>
     <div class="meta" style="margin-top:1rem">${wiz.mode === "unidentified"
-      ? "參考上方的拍攝畫面找到該頁面並平整拍攝 — 若非實際頁面（如翻頁中、桌面等）請直接隱藏。"
-      : "將書本平放，讓頁面填滿畫面並確保印刷頁碼清晰可見。照片會加入佇列 — 完成後將一次執行辨識。"}</div>
+      ? t("參考上方的拍攝畫面找到該頁面並平整拍攝 — 若非實際頁面（如翻頁中、桌面等）請直接隱藏。")
+      : t("將書本平放，讓頁面填滿畫面並確保印刷頁碼清晰可見。照片會加入佇列 — 完成後將一次執行辨識。")}</div>
   </div>`;
 }
 
 async function wizardHide() {
   const it = wiz.items[wiz.i];
   try { await api(`/projects/${current}/pages/${it.page_id}`, {method:"DELETE"}); }
-  catch (e) { alert("隱藏失敗：" + e.message); return; }
+  catch (e) { alert(t("隱藏失敗：") + e.message); return; }
   wiz.done++;
   wiz.i++;
   renderWizard();
@@ -2337,21 +2347,21 @@ async function wizardShot() {
       + (it.number != null ? `&number=${it.number}` : "");
   try {
     await uploadXHR(`/api/projects/${current}/capture?${params}`, fd,
-                    pct => btn.textContent = `上傳中 ${pct}%`);
+                    pct => btn.textContent = T`上傳中 ${pct}%`);
     wiz.done++;
     wiz.i++;
     renderWizard();
   } catch (e) {
-    alert("補拍失敗：" + e.message);
+    alert(t("補拍失敗：") + e.message);
     btn.disabled = false;
-    btn.textContent = "📷 拍照";
+    btn.textContent = t("📷 拍照");
   }
 }
 
 async function finishWizard() {
   const done = wiz?.done || 0;
   wiz = null;
-  if (done && confirm(`已拍攝 ${done} 頁。現在要執行處理流程進行辨識嗎？`)) {
+  if (done && confirm(T`已拍攝 ${done} 頁。現在要執行處理流程進行辨識嗎？`)) {
     await api(`/projects/${current}/run`, {method:"POST"});
   }
   openProject(current);
@@ -2398,7 +2408,7 @@ function toggleCell(pageId) {
   const btn = $("tgl-" + pageId);
   const hidden = bodyEl.style.display === "none";
   bodyEl.style.display = hidden ? "block" : "none";
-  if (btn) btn.textContent = hidden ? "收合 ▴" : "展開 ▾";
+  if (btn) btn.textContent = hidden ? t("收合 ▴") : t("展開 ▾");
 }
 
 let pageFilters = {unnumbered: false};
@@ -2457,38 +2467,38 @@ async function waitForJob(jobId, onLine) {
     } catch (e) { await new Promise(r => setTimeout(r, 1500)); continue; }
     for (const l of ls) { after = l.id; if (onLine) onLine(l.line); }
     if (j.status === "done") return j;
-    if (j.status === "error") throw new Error(j.error || "工作失敗");
+    if (j.status === "error") throw new Error(j.error || t("工作失敗"));
     if (j.status === "canceled") throw new Error("canceled");
     await new Promise(r => setTimeout(r, 1000));
   }
 }
 
 async function rebuildBook(btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "重新組合中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("重新組合中…"); }
   try { await api(`/projects/${current}/reassemble`, {method: "POST"}); }
-  catch (e) { alert("重新組合失敗：" + e.message); if (btn) btn.disabled = false; return; }
+  catch (e) { alert(t("重新組合失敗：") + e.message); if (btn) btn.disabled = false; return; }
   renderTab("proof", window._proj);   // reloads chapters from the fresh book.md
 }
 
 // cheaply re-validate a stale chapter's proof against the current text (no LLM)
 async function refreshProof(idx, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "重新整理中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("重新整理中…"); }
   try { await api(`/projects/${current}/proof/${idx}/refresh`, {method: "POST"}); }
-  catch (e) { alert("重新整理失敗：" + e.message); if (btn) btn.disabled = false; return; }
+  catch (e) { alert(t("重新整理失敗：") + e.message); if (btn) btn.disabled = false; return; }
   renderTab("proof", window._proj);
 }
 
 async function refreshAllStale(btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "重新整理中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("重新整理中…"); }
   try {
     const r = await api(`/projects/${current}/proof/refresh-stale`, {method: "POST"});
-    const s = $("proofall-status"); if (s) s.textContent = `已重新整理 ${r.refreshed} 個章節`;
-  } catch (e) { alert("重新整理失敗：" + e.message); if (btn) btn.disabled = false; return; }
+    const s = $("proofall-status"); if (s) s.textContent = T`已重新整理 ${r.refreshed} 個章節`;
+  } catch (e) { alert(t("重新整理失敗：") + e.message); if (btn) btn.disabled = false; return; }
   renderTab("proof", window._proj);
 }
 
 async function runProof(idx, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "校對中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("校對中…"); }
   try {
     const { job_id } = await api(`/projects/${current}/proof/${idx}/run`, {method: "POST"});
     await waitForJob(job_id);
@@ -2514,11 +2524,11 @@ async function saveFix(ci, fi) {
 
 async function aiRefine(btn) {
   btn.disabled = true;
-  btn.textContent = "🤖 最佳化中…（需數分鐘）";
+  btn.textContent = t("🤖 最佳化中…（需數分鐘）");
   try {
     const r = await api(`/projects/${current}/figures/ai-refine`, {method: "POST"});
-    alert(`AI 最佳化完成：已更新 ${r.refined} 個裁切、` +
-          `保留 ${r.kept_manual} 個手動裁切，失敗 ${r.failed} 個。`);
+    alert(T`AI 最佳化完成：已更新 ${r.refined} 個裁切、` +
+          T`保留 ${r.kept_manual} 個手動裁切，失敗 ${r.failed} 個。`);
   } catch (e) { alert(e.message); }
   openProject(current, "figures");
 }
@@ -2526,12 +2536,12 @@ async function aiRefine(btn) {
 let peekZoom = 1;
 function peekPage(pageId) {
   const pg = (window._proj?.pages || []).find(x => x.id === pageId);
-  if (!pg || !pg.color) { alert("此頁面尚未有處理後的影像"); return; }
+  if (!pg || !pg.color) { alert(t("此頁面尚未有處理後的影像")); return; }
   let pane = $("page-peek");
   if (!pane) {
     pane = document.createElement("div");
     pane.id = "page-peek";
-    pane.innerHTML = `
+    pane.innerHTML = T`
       <div id="peek-head">
         <b id="peek-title" style="flex:1;white-space:nowrap;overflow:hidden;
            text-overflow:ellipsis"></b>
@@ -2561,7 +2571,7 @@ function peekPage(pageId) {
   }
   peekZoom = 1;
   $("peek-title").textContent =
-    (pg.printed_number != null ? "頁面 " + pg.printed_number : pg.id) + " · " + pg.id;
+    (pg.printed_number != null ? t("頁面 ") + pg.printed_number : pg.id) + " · " + pg.id;
   const img = $("peek-img");
   img.style.width = "100%";
   img.src = `/api/projects/${current}/thumb/${pg.color}?w=1100${fv(pg.color)}`;
@@ -2578,14 +2588,14 @@ function peekZoomBy(dir) {
 
 async function resolveFinding(ci, fi, btn) {
   btn.disabled = true;
-  btn.textContent = "重新辨識中…";
+  btn.textContent = t("重新辨識中…");
   try {
     const { job_id } = await api(`/projects/${current}/proof/${ci}/finding/${fi}/resolve`,
               {method: "POST"});
     await waitForJob(job_id);
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = "🔎 重新辨識頁面";
+    btn.textContent = t("🔎 重新辨識頁面");
     alert(e.message);
     return;
   }
@@ -2613,24 +2623,24 @@ async function proofAll() {
   const staleN = r.chapters.filter(c => c.status === "stale").length;
   if (staleN) {
     const st = $("proofall-status");
-    if (st) st.textContent = `正在重新整理 ${staleN} 個過期的章節…`;
+    if (st) st.textContent = T`正在重新整理 ${staleN} 個過期的章節…`;
     try { await api(`/projects/${current}/proof/refresh-stale`, {method: "POST"}); } catch {}
   }
   const todo = r.chapters.filter(c => c.status === "unproofed");
   if (!todo.length) {
     if (staleN) renderTab("proof", window._proj);
-    else alert("無待處理項目 — 所有章節皆已校對完成。");
+    else alert(t("無待處理項目 — 所有章節皆已校對完成。"));
     return;
   }
   for (let i = 0; i < todo.length; i++) {
     const st = $("proofall-status");
-    if (st) st.textContent = `校對中 ${i + 1}/${todo.length}：${todo[i].title}…`;
+    if (st) st.textContent = T`校對中 ${i + 1}/${todo.length}：${todo[i].title}…`;
     try {
       const { job_id } = await api(`/projects/${current}/proof/${todo[i].idx}/run`, {method: "POST"});
       await waitForJob(job_id);
     } catch (e) {
       if ($("proofall-status"))
-        $("proofall-status").textContent = `${todo[i].title} 失敗：${e.message}`;
+        $("proofall-status").textContent = T`${todo[i].title} 失敗：${e.message}`;
       break;
     }
   }
@@ -2639,14 +2649,14 @@ async function proofAll() {
 
 // re-read one chapter's stuck page-anchored findings from the page images
 async function rereadChapter(idx, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = "重新辨識中…"; }
+  if (btn) { btn.disabled = true; btn.textContent = t("重新辨識中…"); }
   try {
     const { job_id } = await api(`/projects/${current}/proof/${idx}/reread-stuck`, {method: "POST"});
     const j = await waitForJob(job_id);
     const d = j.result || {};
     const s = $("proofall-status");
-    if (s) s.textContent = `已重新辨識 ${d.attempted || 0} 個：${d.rescued || 0} 個自動修正，`
-      + `${d.still_manual || 0} 個仍需手動處理`;
+    if (s) s.textContent = T`已重新辨識 ${d.attempted || 0} 個：${d.rescued || 0} 個自動修正，`
+      + T`${d.still_manual || 0} 個仍需手動處理`;
   } catch (e) { alert(e.message); if (btn) btn.disabled = false; return; }
   renderTab("proof", window._proj);
 }
@@ -2655,12 +2665,12 @@ async function rereadAllStuck() {
   // only proofed chapters that aren't stale can be re-read
   const chs = r.chapters.filter(c => c.findings != null && c.status !== "stale"
                                      && c.status !== "unproofed");
-  if (!chs.length) { alert("沒有可重新辨識的已校對章節。"); return; }
+  if (!chs.length) { alert(t("沒有可重新辨識的已校對章節。")); return; }
   let rescued = 0, manual = 0, attempted = 0;
   for (let i = 0; i < chs.length; i++) {
     const st = $("proofall-status");
-    if (st) st.textContent = `正在重新辨識頁面 ${i + 1}/${chs.length}：${chs[i].title}… `
-      + `(目前已自動修正 ${rescued} 項)`;
+    if (st) st.textContent = T`正在重新辨識頁面 ${i + 1}/${chs.length}：${chs[i].title}… `
+      + T`(目前已自動修正 ${rescued} 項)`;
     try {
       const { job_id } = await api(`/projects/${current}/proof/${chs[i].idx}/reread-stuck`,
                           {method: "POST"});
@@ -2671,9 +2681,9 @@ async function rereadAllStuck() {
   }
   const st = $("proofall-status");
   if (st) st.textContent = "";
-  alert(`已在 ${chs.length} 個章節中重新辨識 ${attempted} 項卡住的發現：\n`
-    + `• ${rescued} 項已從頁面影像自動修正\n`
-    + `• ${manual} 項仍需手動處理（使用 ✎ 或 👁 檢視頁面）`);
+  alert(T`已在 ${chs.length} 個章節中重新辨識 ${attempted} 項卡住的發現：\n`
+    + T`• ${rescued} 項已從頁面影像自動修正\n`
+    + T`• ${manual} 項仍需手動處理（使用 ✎ 或 👁 檢視頁面）`);
   renderTab("proof", window._proj);
 }
 
@@ -2690,7 +2700,7 @@ async function renderStorage(name) {
   let s;
   try { s = await api(`/projects/${name}/storage`); }
   catch (e) { card.querySelector(".meta").textContent = e.message; return; }
-  const catRow = (key, c) => c.count ? `
+  const catRow = (key, c) => c.count ? T`
     <label class="row" style="border-top:1px solid var(--line);padding:.45rem 0;
            cursor:pointer">
       <input type="checkbox" class="cln-cat" value="${key}"
@@ -2700,7 +2710,7 @@ async function renderStorage(name) {
       <span class="meta" style="margin:0">${c.count.toLocaleString()} 個檔案</span>
       <b style="min-width:5.5rem;text-align:right">${fmtBytes(c.size)}</b>
     </label>` : "";
-  const vidRow = (v) => `
+  const vidRow = (v) => T`
     <label class="row" style="border-top:1px solid var(--line);padding:.45rem 0;
            cursor:${v.deletable ? "pointer" : "default"}">
       <input type="checkbox" class="cln-vid" value="${v.id}"
@@ -2708,12 +2718,12 @@ async function renderStorage(name) {
              ${v.deletable ? "" : "disabled"}>
       <span style="flex:1;min-width:10rem">來源影片 <b>${v.id}</b>
         <div class="meta" style="margin:0">${
-          v.deleted ? "來源已刪除 — 擷取的頁面仍保留"
-          : v.deletable ? `已處理（擷取了 ${v.frames ?? "?"} 個影格）— 由其建立的頁面在刪除後仍會保留；刪除後將無法重新擷取`
-          : "尚未完全處理 — 請保留"}</div></span>
+          v.deleted ? t("來源已刪除 — 擷取的頁面仍保留")
+          : v.deletable ? T`已處理（擷取了 ${v.frames ?? "?"} 個影格）— 由其建立的頁面在刪除後仍會保留；刪除後將無法重新擷取`
+          : t("尚未完全處理 — 請保留")}</div></span>
       <b style="min-width:5.5rem;text-align:right">${v.exists ? fmtBytes(v.size) : "—"}</b>
     </label>`;
-  card.innerHTML = `<h2>儲存空間與清理</h2>
+  card.innerHTML = T`<h2>儲存空間與清理</h2>
     ${s.videos.map(vidRow).join("")}
     ${Object.entries(s.categories).map(([k, c]) => catRow(k, c)).join("")}
     <div class="row" style="margin-top:.7rem">
@@ -2723,7 +2733,7 @@ async function renderStorage(name) {
   const update = () => {
     const tot = [...card.querySelectorAll("input:checked")]
       .reduce((a, el) => a + (+el.dataset.size || 0), 0);
-    $("cln-total").textContent = tot ? `將釋放 ${fmtBytes(tot)}` : "";
+    $("cln-total").textContent = tot ? T`將釋放 ${fmtBytes(tot)}` : "";
   };
   card.querySelectorAll("input").forEach(el => el.onchange = update);
 }
@@ -2731,19 +2741,19 @@ async function renderStorage(name) {
 async function runCleanup() {
   const cats = [...document.querySelectorAll(".cln-cat:checked")].map(e => e.value);
   const vids = [...document.querySelectorAll(".cln-vid:checked")].map(e => e.value);
-  if (!cats.length && !vids.length) { alert("未選取任何項目。"); return; }
+  if (!cats.length && !vids.length) { alert(t("未選取任何項目。")); return; }
   const warn = [];
-  if (cats.includes("hidden_pages")) warn.push("已隱藏頁面將無法再取消隱藏");
-  if (cats.includes("duplicate_pages")) warn.push("重複頁面將無法再透過「非重複項目」復原");
-  if (vids.length) warn.push(`來源影片 ${vids.join(", ")} 刪除後將無法重新擷取`);
-  if (!confirm(`確定要刪除選取的檔案？${warn.length ? "\n\n注意：" + warn.join("；") + "。" : ""}`))
+  if (cats.includes("hidden_pages")) warn.push(t("已隱藏頁面將無法再取消隱藏"));
+  if (cats.includes("duplicate_pages")) warn.push(t("重複頁面將無法再透過「非重複項目」復原"));
+  if (vids.length) warn.push(T`來源影片 ${vids.join(", ")} 刪除後將無法重新擷取`);
+  if (!confirm(T`確定要刪除選取的檔案？${warn.length ? t("\n\n注意：") + warn.join(t("；")) + t("。") : ""}`))
     return;
   try {
     const r = await api(`/projects/${current}/cleanup`, {method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({categories: cats, videos: vids})});
-    alert(`已釋放 ${fmtBytes(r.freed)}。`);
-  } catch (e) { alert("清理失敗：" + e.message); }
+    alert(T`已釋放 ${fmtBytes(r.freed)}。`);
+  } catch (e) { alert(t("清理失敗：") + e.message); }
   renderStorage(current);
 }
 
@@ -2752,7 +2762,7 @@ let review = null;
 
 async function startReshootReview() {
   const r = await api(`/projects/${current}/reshoot`);
-  if (!r.items?.length) { alert("重拍清單是空的。"); return; }
+  if (!r.items?.length) { alert(t("重拍清單是空的。")); return; }
   review = {items: r.items, i: 0, kept: 0, dismissed: 0, skipped: 0};
   renderReview();
 }
@@ -2761,10 +2771,10 @@ function renderReview() {
   const body = $("tabbody"), rv = review;
   $("main").scrollTop = 0;
   if (rv.i >= rv.items.length) {
-    body.innerHTML = `<div class="card" style="text-align:center">
+    body.innerHTML = T`<div class="card" style="text-align:center">
       <h2>重拍審閱完成</h2>
       <p>確認重拍 ${rv.kept} 頁 · 略過 ${rv.dismissed} 頁${
-        rv.skipped ? ` · 跳過 ${rv.skipped} 頁（仍標記）` : ""}</p>
+        rv.skipped ? T` · 跳過 ${rv.skipped} 頁（仍標記）` : ""}</p>
       <div class="row" style="justify-content:center">
         <button style="font-size:1.05rem;padding:.7rem 1.4rem"
           onclick="startWizard()">📷 啟動補拍精靈</button>
@@ -2774,10 +2784,10 @@ function renderReview() {
   }
   const it = rv.items[rv.i];
   const pg = (window._proj?.pages || []).find(x => x.id === it.id) || {};
-  body.innerHTML = `<div class="card">
+  body.innerHTML = T`<div class="card">
     <div class="row">
       <b>${rv.i + 1} / ${rv.items.length}</b>
-      <b>${it.printed_number != null ? "第 " + it.printed_number + " 頁" : "無頁碼"}</b>
+      <b>${it.printed_number != null ? t("第 ") + it.printed_number + t(" 頁") : t("無頁碼")}</b>
       <span class="meta" style="margin:0">· ${it.id}</span>
       <a href="javascript:void(0)" onclick="gotoPage('${it.id}')"
          style="margin-left:.6rem">在頁面分頁中開啟</a>
@@ -2791,12 +2801,12 @@ function renderReview() {
            src="/api/projects/${current}/thumb/${pg.color}?w=900${fv(pg.color)}"
            style="max-height:70vh;max-width:100%;border:1px solid var(--line);
                   border-radius:6px;display:block;margin:0 auto">`
-          : "<div class='meta'>此頁面尚無已處理的影像</div>"}
+          : t("<div class='meta'>此頁面尚無已處理的影像</div>")}
       </div>
       <div style="flex:1 1 340px;min-width:280px">
         <div class="meta" style="margin:0 0 .3rem">擷取的 Markdown — 在此編輯並儲存，或與頁面對照以決定是否重拍／重新辨識：</div>
         <textarea id="md-${it.id}" data-page="${it.id}"
-          placeholder="${pg.md ? "載入中…" : "此頁面無辨識結果"}"
+          placeholder="${pg.md ? t("載入中…") : t("此頁面無辨識結果")}"
           style="height:66vh;font-size:.82rem;line-height:1.4"
           oninput="this.dataset.dirty=1;const b=$('mdsave-${it.id}');
                    b.textContent='儲存 Markdown *';b.disabled=false"></textarea>
@@ -2824,12 +2834,12 @@ function renderReview() {
   if (pg.md) {
     fetch(`/api/projects/${current}/file/${pg.md}`)
       .then(r => r.ok ? r.text() : Promise.reject())
-      .then(t => {
+      .then(md => {
         const el = $("md-" + it.id);
         // don't clobber the editor if we've moved on, or the user is editing it
         if (el && review.items[review.i]?.id === it.id
             && !el.dataset.dirty && document.activeElement !== el)
-          el.value = t;
+          el.value = md;
       })
       .catch(() => {});
   }
@@ -2840,7 +2850,7 @@ function reviewDirtyOK() {
   const it = review?.items?.[review.i];
   const el = it && $("md-" + it.id);
   if (el && el.dataset.dirty)
-    return confirm("此頁面有未儲存的 Markdown 編輯內容。確定不儲存直接離開？\n\n（請先點擊「儲存 Markdown」以保留變更。）");
+    return confirm(t("此頁面有未儲存的 Markdown 編輯內容。確定不儲存直接離開？\n\n（請先點擊「儲存 Markdown」以保留變更。）"));
   return true;
 }
 
@@ -2857,7 +2867,7 @@ async function reviewDismiss(pageId) {
   try {
     await api(`/projects/${current}/pages/${pageId}`, {method: "PATCH",
       headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
-  } catch (e) { alert("失敗：" + e.message); return; }
+  } catch (e) { alert(t("失敗：") + e.message); return; }
   // figure close-up marks are separate flags — clear them too, best effort
   for (let ri = 0; ri < (pg.regions || []).length; ri++)
     if (pg.regions[ri].needs_reshoot)
@@ -2871,7 +2881,7 @@ async function reviewDismiss(pageId) {
 
 async function reviewHide(pageId) {
   try { await api(`/projects/${current}/pages/${pageId}`, {method: "DELETE"}); }
-  catch (e) { alert("失敗：" + e.message); return; }
+  catch (e) { alert(t("失敗：") + e.message); return; }
   review.dismissed++; review.i++; renderReview();
 }
 
@@ -2880,12 +2890,12 @@ async function reocrAll() {
   let n = 0;
   try { n = ((await api(`/projects/${current}/reocr-list`)).items || [])
               .filter(i => i.can_reocr).length; } catch {}
-  if (!n) { alert("沒有可重新辨識的失敗頁面。"); return; }
-  if (!confirm(`將 ${n} 個失敗頁面排入佇列以重新辨識？\n\n`
-    + `它們會在工作佇列中與分割修復階段一起執行；請留意 ⚙ 佇列。`)) return;
+  if (!n) { alert(t("沒有可重新辨識的失敗頁面。")); return; }
+  if (!confirm(T`將 ${n} 個失敗頁面排入佇列以重新辨識？\n\n`
+    + T`它們會在工作佇列中與分割修復階段一起執行；請留意 ⚙ 佇列。`)) return;
   try {
     const r = await api(`/projects/${current}/reocr-all`, {method: "POST"});
-    alert(`已將 ${r.enqueued} 個頁面加入重新辨識佇列。`);
+    alert(T`已將 ${r.enqueued} 個頁面加入重新辨識佇列。`);
   } catch (e) { alert(e.message); return; }
   openProject(current, "pipeline");
 }
@@ -2900,7 +2910,7 @@ async function reocrOne(pageId) {
 let cropReview = null;
 async function startCropReview() {
   const r = await api(`/projects/${current}/crop-list`);
-  if (!r.items?.length) { alert("裁切清單為空 — 每個區塊皆已裁切。"); return; }
+  if (!r.items?.length) { alert(t("裁切清單為空 — 每個區塊皆已裁切。")); return; }
   // flatten pages → one wizard step per uncropped region
   const steps = [], totals = {};
   for (const it of r.items) {
@@ -2914,7 +2924,7 @@ async function startCropReview() {
   cropReview = {steps, totals, cropped: {}, i: 0, done: 0, skipped: 0};
   // render the host body ONCE, with the crop modal in the DOM, then drive it
   $("main").scrollTop = 0;
-  $("tabbody").innerHTML = `<div class="card">
+  $("tabbody").innerHTML = T`<div class="card">
     <div class="row">
       <b>✂ 裁切精靈</b>
       <span class="meta" style="margin:0">為模型找到的每個圖表繪製方框（拖曳角落可微調，或點擊 ✨ 智慧裁切），接著點擊儲存並前往下一筆</span>
@@ -2933,13 +2943,13 @@ function cropWizStep() {
   openCrop(s.pageId, s.ridx, "cropreview", true);   // shows modal + wizard UI
   const info = $("crop-wiz-info");
   if (info) info.innerHTML = `<b>${cr.i + 1} / ${cr.steps.length}</b> · ` +
-    `${s.printed_number != null ? "頁面 " + s.printed_number : s.pageId} · ` +
-    `區塊 ${s.ridx}`;
+    `${s.printed_number != null ? t("頁面 ") + s.printed_number : s.pageId} · ` +
+    T`區塊 ${s.ridx}`;
   // full caption gets its own multi-line banner above the image (never truncated)
   const cap = $("crop-wiz-caption");
   if (cap) {
     if (s.caption) {
-      cap.innerHTML = `<b>裁切此處：</b> ${esc(s.caption)}`;
+      cap.innerHTML = T`<b>裁切此處：</b> ${esc(s.caption)}`;
       cap.style.display = "";
     } else {
       cap.style.display = "none";
@@ -2971,7 +2981,7 @@ function cropWizDone() {
   const cr = cropReview;
   cropReview = null;
   $("crop-modal") && ($("crop-modal").style.display = "none");
-  $("tabbody").innerHTML = `<div class="card" style="text-align:center">
+  $("tabbody").innerHTML = T`<div class="card" style="text-align:center">
     <h2>裁切精靈完成</h2>
     <p>已裁切 ${cr.done} 個區塊 · 已略過 ${cr.skipped} 個</p>
     <button class="secondary" onclick="openProject(current,'pipeline')">返回處理流程</button>
@@ -2986,25 +2996,25 @@ function nextSection(ch) {
 
 async function setSection(pageId) {
   const pg = (window._proj?.pages || []).find(x => x.id === pageId);
-  const v = prompt("此頁面的區段 / 章節標題 —\n" +
-                   "將成為建置書籍中的章節（留空則移除）：",
+  const v = prompt(t("此頁面的區段 / 章節標題 —\n") +
+                   t("將成為建置書籍中的章節（留空則移除）："),
                    pg?.section || "");
   if (v === null) return;
   try {
     await api(`/projects/${current}/pages/${pageId}`, {method: "PATCH",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({section: v})});
-  } catch (e) { alert("失敗：" + e.message); return; }
+  } catch (e) { alert(t("失敗：") + e.message); return; }
   gotoPage(pageId);
 }
 
 async function setCover(pageId, on) {
-  if (on && !confirm("將此頁面設為書籍封面圖片？\n\n"
-                   + "它將被固定在最前面，不納入正文中，"
-                   + "並作為 EPUB 封面使用。現有的封面設定將會被取消。")) return;
+  if (on && !confirm(t("將此頁面設為書籍封面圖片？\n\n")
+                   + t("它將被固定在最前面，不納入正文中，")
+                   + t("並作為 EPUB 封面使用。現有的封面設定將會被取消。"))) return;
   try {
     await api(`/projects/${current}/pages/${pageId}/cover?on=${on}`, {method: "POST"});
-  } catch (e) { alert("失敗：" + e.message); return; }
+  } catch (e) { alert(t("失敗：") + e.message); return; }
   openProject(current, "pages");
 }
 
@@ -3016,37 +3026,37 @@ async function patchSection(pageId, section) {
 }
 async function renameChapter(pageId, title) {
   try { await patchSection(pageId, title.trim()); }
-  catch (e) { alert("失敗：" + e.message); }
+  catch (e) { alert(t("失敗：") + e.message); }
   openProject(current, "contents");
 }
 async function removeChapter(pageId) {
-  if (!confirm("確定要移除此章節標題？頁面仍會保留 — 只是不再作為"
-             + "章節的起點。")) return;
+  if (!confirm(t("確定要移除此章節標題？頁面仍會保留 — 只是不再作為")
+             + t("章節的起點。"))) return;
   try { await patchSection(pageId, ""); }
-  catch (e) { alert("失敗：" + e.message); return; }
+  catch (e) { alert(t("失敗：") + e.message); return; }
   openProject(current, "contents");
 }
 async function addChapter() {
   const pid = $("addch-page").value, title = $("addch-title").value.trim();
-  if (!pid || !title) { alert("請選擇頁面並輸入章節標題。"); return; }
+  if (!pid || !title) { alert(t("請選擇頁面並輸入章節標題。")); return; }
   try { await patchSection(pid, title); }
-  catch (e) { alert("失敗：" + e.message); return; }
+  catch (e) { alert(t("失敗：") + e.message); return; }
   openProject(current, "contents");
 }
 async function contentsAutodetect(replace, manual) {
   if (manual && !confirm(replace
-      ? "確定要以印刷目錄頁取代所有章節起點？這將覆蓋"
-        + "您手動設定的標題。"
-      : "從印刷目錄頁偵測章節並填入尚未"
-        + "設定的項目？")) return;
+      ? t("確定要以印刷目錄頁取代所有章節起點？這將覆蓋")
+        + t("您手動設定的標題。")
+      : t("從印刷目錄頁偵測章節並填入尚未")
+        + t("設定的項目？"))) return;
   try {
     const r = await api(`/projects/${current}/contents/autodetect`
                         + (replace ? "?replace=true" : ""), {method: "POST"});
     if (manual) {
-      let msg = `已套用印刷目錄頁中的 ${r.applied} / ${r.total} 個章節。`;
-      if (r.skipped) msg += `\n${r.skipped} 個已具備標題（已保留）。`;
+      let msg = T`已套用印刷目錄頁中的 ${r.applied} / ${r.total} 個章節。`;
+      if (r.skipped) msg += T`\n${r.skipped} 個已具備標題（已保留）。`;
       if (r.unplaced && r.unplaced.length)
-        msg += `\n無法放置（頁面未拍攝或未編號）：${r.unplaced.join(", ")}。`;
+        msg += T`\n無法放置（頁面未拍攝或未編號）：${r.unplaced.join(", ")}。`;
       alert(msg);
     }
   } catch (e) {
@@ -3059,15 +3069,15 @@ async function suppressHeading(pageId, title, on) {
     await api(`/projects/${current}/contents/suppress-heading`
       + `?page_id=${encodeURIComponent(pageId)}`
       + `&title=${encodeURIComponent(title)}&on=${on}`, {method: "POST"});
-  } catch (e) { alert("失敗：" + e.message); return; }
+  } catch (e) { alert(t("失敗：") + e.message); return; }
   openProject(current, "contents");
 }
 function suppressHeadingIdx(ci) {
   const ch = (window._chapters || [])[ci];
   if (!ch) return;
-  if (!confirm(`要移除自動偵測到的標題「${ch.title}」嗎？\n\n`
-    + `在產生的書中將降級為純文字（您頁面的 OCR 不受影響），`
-    + `並可從「已隱藏標題」中還原。`)) return;
+  if (!confirm(T`要移除自動偵測到的標題「${ch.title}」嗎？\n\n`
+    + T`在產生的書中將降級為純文字（您頁面的 OCR 不受影響），`
+    + T`並可從「已隱藏標題」中還原。`)) return;
   suppressHeading(ch.id, ch.title, true);
 }
 function restoreHeadingIdx(hi) {
@@ -3097,15 +3107,15 @@ async function rotatePage(pageId) {
 
 async function retryOcr(pageId, btn) {
   btn.disabled = true;
-  btn.textContent = "已排入佇列…";
+  btn.textContent = t("已排入佇列…");
   try {
     const { job_id } = await api(`/projects/${current}/pages/${pageId}/retranscribe`,
                                  {method: "POST"});
-    btn.textContent = "正在重試…";
+    btn.textContent = t("正在重試…");
     await waitForJob(job_id);   // durable job — also visible in the queue panel
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = "↻ 重試 OCR";
+    btn.textContent = t("↻ 重試 OCR");
     alert(e.message);
     return;
   }
@@ -3116,7 +3126,7 @@ async function ignoreSuspect(pageId) {
   try { await api(`/projects/${current}/pages/${pageId}`, {
     method: "PATCH", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({ignore_suspect: true})});
-  } catch (e) { alert('失敗：' + e.message); return; }
+  } catch (e) { alert(t('失敗：') + e.message); return; }
   openProject(current, "pages");
 }
 
@@ -3124,7 +3134,7 @@ async function markDuplicate(pageId) {
   try { await api(`/projects/${current}/pages/${pageId}`, {
     method: "PATCH", headers: {"Content-Type": "application/json"},
     body: JSON.stringify({mark_duplicate: true})});
-  } catch (e) { alert('儲存失敗：' + e.message); return; }
+  } catch (e) { alert(t('儲存失敗：') + e.message); return; }
   openProject(current, "pages");
 }
 
@@ -3132,27 +3142,27 @@ async function setPageNumber(pageId) {
   const v = $("num-" + pageId).value;
   try { await api(`/projects/${current}/pages/${pageId}`, {
     method: "PATCH", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({printed_number: v === "" ? null : +v})}); } catch (e) { alert('儲存失敗：' + e.message); return; }
+    body: JSON.stringify({printed_number: v === "" ? null : +v})}); } catch (e) { alert(t('儲存失敗：') + e.message); return; }
   openProject(current, "pages");
 }
 
 async function toggleReshoot(pageId, flag) {
   try { await api(`/projects/${current}/pages/${pageId}`, {
     method: "PATCH", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({needs_reshoot: flag})}); } catch (e) { alert('儲存失敗：' + e.message); return; }
+    body: JSON.stringify({needs_reshoot: flag})}); } catch (e) { alert(t('儲存失敗：') + e.message); return; }
   openProject(current, "pages");
 }
 
 async function unduplicate(pageId) {
   try { await api(`/projects/${current}/pages/${pageId}`, {
     method: "PATCH", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({unduplicate: true})}); } catch (e) { alert('儲存失敗：' + e.message); return; }
+    body: JSON.stringify({unduplicate: true})}); } catch (e) { alert(t('儲存失敗：') + e.message); return; }
   openProject(current, "pages");
 }
 
 // ---- figure crop editor: draw a rectangle over the page image
 function cropModalHtml() {
-  return `
+  return T`
   <div id="crop-modal" style="display:none;position:fixed;inset:0;z-index:50;
        background:rgba(0,0,0,.7);align-items:center;justify-content:center">
     <div style="background:#fff;border-radius:10px;padding:1rem;max-width:92vw;
@@ -3228,7 +3238,7 @@ function openCrop(pageId, figIdx, origin = "figures", isRegion = false) {
     $("crop-wiz-info").style.display = wiz ? "" : "none";
     $("crop-wiz-caption").style.display = "none";  // set by cropWizStep when there's a caption
     $("crop-hint").style.display = wiz ? "none" : "";
-    $("crop-title").textContent = wiz ? "✂ 裁切精靈" : "重新裁切圖表";
+    $("crop-title").textContent = wiz ? t("✂ 裁切精靈") : t("重新裁切圖表");
   }
   img.onload = () => drawCropQuad();
   attachCropHandlers();
@@ -3370,7 +3380,7 @@ async function magicCrop() {
       const r = await api(`/projects/${current}/pages/${cropCtx.pageId}/magic-crop`, {
         method: "POST", headers: {"Content-Type": "application/json"},
         body: JSON.stringify(cropCtx.quad ? {quad_norm: cropCtx.quad} : {})});
-      if (!r.ok) { alert(r.detail || "偵測信心度不足"); return; }
+      if (!r.ok) { alert(r.detail || t("偵測信心度不足")); return; }
       cropCtx.magic = r.candidates || [r.bbox_norm];
       cropCtx.magicI = 0;
     } else {
@@ -3379,11 +3389,11 @@ async function magicCrop() {
     const [x0, y0, x1, y1] = cropCtx.magic[cropCtx.magicI];
     cropCtx.quad = [[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
     drawCropQuad();
-  } catch (e) { alert("智慧裁切失敗：" + e.message); }
+  } catch (e) { alert(t("智慧裁切失敗：") + e.message); }
 }
 
 async function saveCrop() {
-  if (!cropCtx?.quad) { alert("請先框選範圍"); return; }
+  if (!cropCtx?.quad) { alert(t("請先框選範圍")); return; }
   try {
     await api(`/projects/${current}/pages/${cropCtx.pageId}/`
       + (cropCtx.isPage ? "crop-page"
@@ -3391,7 +3401,7 @@ async function saveCrop() {
          : `figures/${cropCtx.figIdx}/crop`), {
       method: "POST", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({quad_norm: cropCtx.quad})});
-  } catch (e) { alert("裁切失敗：" + e.message); return; }
+  } catch (e) { alert(t("裁切失敗：") + e.message); return; }
   if (!cropCtx.isPage)
     bumpFig(`figures/${cropCtx.pageId}_${String.fromCharCode(97 + cropCtx.figIdx % 26)}.png`);
   $("crop-modal").style.display = "none";
@@ -3409,24 +3419,24 @@ async function saveCrop() {
 
 async function autoRefine() {
   const btn = event.target;
-  btn.disabled = true; btn.textContent = "微調中…";
+  btn.disabled = true; btn.textContent = t("微調中…");
   try {
     const r = await api(`/projects/${current}/figures/auto-refine`, {method:"POST"});
-    alert(`已透過邊緣偵測微調 ${r.refined} 個圖表裁切。`);
-  } catch (e) { alert("自動微調失敗：" + e.message); }
+    alert(T`已透過邊緣偵測微調 ${r.refined} 個圖表裁切。`);
+  } catch (e) { alert(t("自動微調失敗：") + e.message); }
   openProject(current, "figures");
 }
 
 async function figReacq(pageId, figIdx, flag = true, origin) {
   try { await api(`/projects/${current}/pages/${pageId}/figures/${figIdx}` +
                   `/reshoot?flag=${flag}`, {method:"POST"});
-  } catch (e) { alert("失敗：" + e.message); return; }
+  } catch (e) { alert(t("失敗：") + e.message); return; }
   if (origin === "pages") gotoPage(pageId);
   else openProject(current, "figures");
 }
 
 async function delFigure(pageId, figIdx) {
-  if (!confirm("要從書中刪除此圖表嗎？")) return;
+  if (!confirm(t("要從書中刪除此圖表嗎？"))) return;
   await api(`/projects/${current}/pages/${pageId}/figures/${figIdx}`, {method:"DELETE"});
   openProject(current, "figures");
 }
@@ -3441,14 +3451,14 @@ async function setCaption(pageId, figIdx, caption) {
   try { await api(`/projects/${current}/pages/${pageId}/figures/${figIdx}/caption`,
     {method:"POST", headers:{"Content-Type":"application/json"},
      body: JSON.stringify({caption})}); }
-  catch (e) { alert("圖說儲存失敗：" + e.message); }
+  catch (e) { alert(t("圖說儲存失敗：") + e.message); }
 }
 
 async function swapCaptions(pageId, a, b) {
   try { await api(`/projects/${current}/pages/${pageId}/figures/swap-captions`,
     {method:"POST", headers:{"Content-Type":"application/json"},
      body: JSON.stringify({a, b})}); }
-  catch (e) { alert("對調失敗：" + e.message); return; }
+  catch (e) { alert(t("對調失敗：") + e.message); return; }
   renderTab("figures", window._proj);
 }
 
@@ -3488,7 +3498,7 @@ function renderFiguresTab(p, clusters) {
   const figRow = (r, g) => {
     const gi = g.rows.indexOf(r), next = g.rows[gi + 1];
     const canSwap = next && next.pg.id === r.pg.id;   // swap within one page
-    return `
+    return T`
       <div class="row" style="border-top:1px solid var(--line);padding:.7rem 0">
         <a href="javascript:void(0)" onclick="openCrop('${r.pg.id}', ${r.i})"
            title="點擊以重新裁切">
@@ -3498,14 +3508,14 @@ function renderFiguresTab(p, clusters) {
                       cursor:crosshair"></a>
         <div style="flex:1;min-width:14rem">
           <div><a href="javascript:void(0)" onclick="gotoPage('${r.pg.id}')">
-            <b>${r.pg.printed_number != null ? "頁面 " + r.pg.printed_number
-                : "未編頁碼"}</b> <span class="meta">· ${r.pg.id}</span></a>
-            ${r.reacq ? `<span class="badge acceptable">📷 已排入重拍佇列</span>` : ""}</div>
+            <b>${r.pg.printed_number != null ? t("頁面 ") + r.pg.printed_number
+                : t("未編頁碼")}</b> <span class="meta">· ${r.pg.id}</span></a>
+            ${r.reacq ? T`<span class="badge acceptable">📷 已排入重拍佇列</span>` : ""}</div>
           <div class="row" style="margin-top:.3rem;align-items:flex-start">
             <textarea rows="3" placeholder="此圖表的圖說…"
                    style="flex:1;min-width:8rem;margin:0;min-height:0;resize:vertical"
                    onchange="setCaption('${r.pg.id}', ${r.i}, this.value)">${esc(r.caption)}</textarea>
-            ${canSwap ? `<button class="secondary" title="與下方圖表的圖說對調"
+            ${canSwap ? T`<button class="secondary" title="與下方圖表的圖說對調"
                 onclick="swapCaptions('${r.pg.id}', ${r.i}, ${next.i})">⇅ 對調</button>` : ""}
           </div>
         </div>
@@ -3519,7 +3529,7 @@ function renderFiguresTab(p, clusters) {
                  style="display:none" onchange="uploadFigure('${r.pg.id}', ${r.i})">
           <button class="secondary" onclick="$('figup-${r.pg.id}-${r.i}').click()">重新上傳</button>
           <button class="secondary" onclick="figReacq('${r.pg.id}', ${r.i}, ${!r.reacq})">
-            ${r.reacq ? "取消重拍標記" : "重拍"}</button>
+            ${r.reacq ? t("取消重拍標記") : t("重拍")}</button>
           <button class="danger" onclick="delFigure('${r.pg.id}', ${r.i})">刪除</button>
         </span>
       </div>`;
@@ -3532,13 +3542,13 @@ function renderFiguresTab(p, clusters) {
       const c = clusterOf[key(r.pg.id, r.i)];
       if (c != null) (byCluster[c] = byCluster[c] || []).push(r);
     });
-    const dupBanners = Object.values(byCluster).filter(a => a.length > 1).map(a => `
+    const dupBanners = Object.values(byCluster).filter(a => a.length > 1).map(a => T`
       <div class="row" style="background:#fffbeb;border-radius:6px;padding:.35rem .7rem;margin:.35rem 0">
         <span class="meta" style="margin:0;color:#b45309">⚠ 其中有 ${a.length} 個是重複拍攝的同一圖表</span>
         <button class="secondary" onclick='keepBest(${JSON.stringify(
           a.map(r => ({page_id: r.pg.id, fig_idx: r.i})))})'>保留最清晰者，刪除其餘</button>
       </div>`).join("");
-    return `<div style="border:1px solid var(--line);border-radius:8px;padding:.2rem .8rem;margin:.6rem 0">
+    return T`<div style="border:1px solid var(--line);border-radius:8px;padding:.2rem .8rem;margin:.6rem 0">
       <div class="meta" style="padding:.4rem 0">${g.rows.length} 個圖表於印刷頁面 ${g.num}
         — 各自保留其圖說；若兩處圖說顛倒請使用 ⇅ 對調</div>
       ${dupBanners}
@@ -3546,7 +3556,7 @@ function renderFiguresTab(p, clusters) {
     </div>`;
   };
 
-  body.innerHTML = `<div class="card"><h2>圖表 <span class="meta">
+  body.innerHTML = T`<div class="card"><h2>圖表 <span class="meta">
     (依書籍順序 — 重新裁切、圖說、替換或刪除)</span></h2>
     <div class="row" style="margin-bottom:.6rem">
       <label style="margin:0">章節</label>
@@ -3556,7 +3566,7 @@ function renderFiguresTab(p, clusters) {
         ${figChapterOpts.map(c => `<option ${chapterFilter === c ? "selected" : ""}
            value="${esc(c)}">${esc(c)}</option>`).join("")}
       </select>
-      ${chapterFilter ? `<span class="meta" style="margin:0">${rows.length} 個，共
+      ${chapterFilter ? T`<span class="meta" style="margin:0">${rows.length} 個，共
         ${allRows.length} 個圖表</span>` : ""}
       <button class="secondary" style="margin-left:auto" onclick="autoRefine()">✨ 自動微調裁切（邊緣偵測）</button>
       <button onclick="aiRefine(this)" title="由 Claude 根據頁面照片推算各圖表邊角；
@@ -3564,8 +3574,8 @@ function renderFiguresTab(p, clusters) {
     </div>` +
     (groups.map(groupHtml).join("")
       || (chapterFilter
-          ? "<div class='meta'>此章節尚無圖表</div>"
-          : "<div class='meta'>尚無圖表</div>"))
+          ? t("<div class='meta'>此章節尚無圖表</div>")
+          : t("<div class='meta'>尚無圖表</div>")))
     + `</div>` + cropModalHtml();
 }
 async function uploadFigure(pageId, figIdx) {
@@ -3576,13 +3586,13 @@ async function uploadFigure(pageId, figIdx) {
   const r = await fetch(
     `/api/projects/${current}/pages/${pageId}/figures/${figIdx}/upload`,
     {method:"POST", body: fd});
-  if (!r.ok) alert("上傳失敗");
+  if (!r.ok) alert(t("上傳失敗"));
   bumpFig(`figures/${pageId}_${String.fromCharCode(97 + figIdx % 26)}.png`);
   openProject(current, "figures");
 }
 
 async function keepBest(items) {
-  if (!confirm(`保留 ${items.length} 個圖表中清晰度最高者並刪除其餘圖表？`)) return;
+  if (!confirm(T`保留 ${items.length} 個圖表中清晰度最高者並刪除其餘圖表？`)) return;
   await api(`/projects/${current}/figures/keep-best`, {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({items})});

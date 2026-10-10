@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..ffmpeg import extract_frames
 from ..workspace import Workspace
+from ..i18n import tr
 
 
 def run(ws: Workspace, cfg: dict, log=print) -> None:
@@ -15,10 +16,10 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         expected = video.get("nb_frames")
         existing = sum(1 for _ in out_dir.glob("f*.jpg")) if out_dir.exists() else 0
         if expected and existing >= expected:
-            log(f"  {vid}：已擷取過 {existing} 個影格，略過")
+            log(tr("  {0}：已擷取過 {1} 個影格，略過", vid, existing))
             totals[vid] = existing
             continue
-        log(f"  {vid}：正在從 {video['path']} 擷取影格 ...")
+        log(tr("  {0}：正在從 {1} 擷取影格 ...", vid, video['path']))
         count = extract_frames(ws.root / video["path"], out_dir, jpeg_quality=quality)
         video["frames_extracted"] = count
         totals[vid] = count

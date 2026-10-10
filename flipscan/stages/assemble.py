@@ -12,6 +12,7 @@ from collections import Counter
 from difflib import SequenceMatcher
 
 from ..workspace import Workspace
+from ..i18n import tr
 
 _SENTENCE_END = re.compile(r'[.!?:;"”’)\]]\s*$')
 _HEADING = re.compile(r"^#{1,6}\s")
@@ -197,8 +198,8 @@ def _normalize_inserted_titles(texts: list[str],
         styled = style(int(m.group(1)))
         if styled and f"# {title}" in texts[i]:
             texts[i] = texts[i].replace(f"# {title}", f"# {styled}", 1)
-            log(f"  章節標題已規格化為本書風格："
-                f"{title!r} -> {styled!r}")
+            log(tr("  章節標題已規格化為本書"
+                "風格：{0!r} -> {1!r}", title, styled))
 
 
 def _insert_chapter_breaks(pages: list[dict], texts: list[str],
@@ -234,7 +235,7 @@ def _insert_chapter_breaks(pages: list[dict], texts: list[str],
         synth.append((i, title))
         added += 1
     if added:
-        log(f"  已根據印刷目錄頁調整 {added} 個章節起點")
+        log(tr("  已根據印刷目錄頁調整 {0} 個章節起點", added))
     _normalize_inserted_titles(texts, synth, log)
     return texts
 
@@ -396,14 +397,14 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
             missing.append(page["id"])
             texts.append("")  # keep a page boundary; content is simply absent
     if missing:
-        log(f"  警告：有 {len(missing)} 個頁面沒有辨識結果：{', '.join(missing)}")
+        log(tr("  警告：有 {0} 個頁面沒有辨識結果：{1}", len(missing), ', '.join(missing)))
 
     book_meta = ws.manifest["book"]
     extra_refs = {_norm_line(s) for s in (book_meta.get("title"),
                                           book_meta.get("author")) if s}
     toc = parse_printed_toc(texts)
     if toc:
-        log(f"  已找到印刷目錄頁：共有 {len(toc)} 個項目")
+        log(tr("  已找到印刷目錄頁：共有 {0} 個項目", len(toc)))
     texts = _strip_repeated_lines(texts, extra_refs=extra_refs)
     texts = _dedupe_headings(texts)
     texts = _insert_chapter_breaks(kept, texts, toc, log)
@@ -447,5 +448,5 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
     out = ws.work_file("book.md")
     out.write_text(book, encoding="utf-8")
     headings = sum(1 for ln in book.splitlines() if ln.startswith("# "))
-    log(f"  已組合 {len(texts)} 個頁面 -> {out}（{headings} 個章節標題）")
+    log(tr("  已組合 {0} 個頁面 -> {1}（{2} 個章節標題）", len(texts), out, headings))
     ws.stage_done("assemble", missing=missing)

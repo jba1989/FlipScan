@@ -19,6 +19,7 @@ from ..jobs_handlers import concurrency_config, register_handlers
 from ..project import create_project, retry_ocr_page
 from ..workspace import STAGES, Workspace
 from .security import install_token_auth, is_plain_name, load_or_create_token, within
+from ..i18n import set_language, tr
 
 _TERMINAL = {DONE, ERROR, CANCELED}
 
@@ -131,6 +132,10 @@ class KeepBest(BaseModel):
     items: list[dict]  # [{page_id, fig_idx}, ...] — duplicates of one figure
 
 
+class Language(BaseModel):
+    lang: str
+
+
 class Settings(BaseModel):
     provider: str = "ollama"
     ollama_url: str = ""
@@ -204,7 +209,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         target = root / name
         if (not is_plain_name(name) or not within(root, target)
                 or not (target / "manifest.json").exists()):
-            raise HTTPException(404, f"找不到專案 {name!r}")
+            raise HTTPException(404, tr("找不到專案 {0!r}", name))
         return Workspace.open(target)
 
     # ---------------- projects
@@ -301,17 +306,17 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
     def new_project(spec: NewProject):
         name = spec.name or _unique_slug(root, spec.title)
         if not is_plain_name(name):
-            raise HTTPException(400, "專案名稱必須是單一資料夾名稱")
+            raise HTTPException(400, tr("專案名稱必須是單一資料夾名稱"))
         target = root / name
         if (target / "manifest.json").exists():
-            raise HTTPException(409, "專案已存在")
+            raise HTTPException(409, tr("專案已存在"))
         for v in spec.videos:
             # only files the browser uploaded — never arbitrary server paths,
             # which would copy e.g. ~/.ssh keys into a servable project folder
             if not within(root / "uploads", Path(v.path)):
-                raise HTTPException(400, "必須先上傳影片 (/api/upload)")
+                raise HTTPException(400, tr("必須先上傳影片 (/api/upload)"))
             if not Path(v.path).is_file():
-                raise HTTPException(400, f"找不到影片：{Path(v.path).name}")
+                raise HTTPException(400, tr("找不到影片：{0}", Path(v.path).name))
         book_meta = {"author": spec.author, "isbn": spec.isbn,
                      "publisher": spec.publisher, "year": spec.year}
         create_project(target, [v.model_dump() for v in spec.videos],
@@ -414,9 +419,9 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         import shutil
         ws = ws_for(name)   # 404s if the project doesn't exist
         if confirm != name:
-            raise HTTPException(400, "請輸入完全相符的專案名稱以確認")
+            raise HTTPException(400, tr("請輸入完全相符的專案名稱以確認"))
         if jobq.active(name, ("pipeline",)) is not None:
-            raise HTTPException(409, "處理流程正在執行中 — 請先停止它")
+            raise HTTPException(409, tr("處理流程正在執行中 — 請先停止它"))
         shutil.rmtree(ws.root, ignore_errors=True)
         return {"ok": True}
 
@@ -426,7 +431,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
     def run_project(name: str, provider: str | None = None, force: bool = False):
         ws_for(name)  # 404 if unknown
         if jobq.active(name, _EXCLUSIVE_KINDS):
-            raise HTTPException(409, "已在執行中（或正在進行匯入）")
+            raise HTTPException(409, tr("已在執行中（或正在進行匯入）"))
         job_id = jobq.enqueue(name, "pipeline",
                               {"provider": provider, "force": force},
                               label="pipeline")
@@ -446,10 +451,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         if current == "transcribe":
             eligible = [p for p in pages if p.get("role") != "cover"]
             detail = {"done": sum(1 for p in eligible if p.get("md")),
-                      "total": len(eligible), "unit": "頁已辨識"}
+                      "total": len(eligible), "unit": tr("頁已辨識")}
         elif current == "preprocess":
             detail = {"done": sum(1 for p in pages if p.get("color")),
-                      "total": len(pages), "unit": "頁已校正"}
+                      "total": len(pages), "unit": tr("頁已校正")}
         elif current in ("extract", "score"):
             vids = ws.manifest["videos"]
             done = sum(1 for v in vids
@@ -483,7 +488,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         # server restarts and lets a reconnecting client replay from the start
         job = jobq.latest(name, "pipeline")
         if job is None:
-            raise HTTPException(404, "沒有正在執行的任務")
+            raise HTTPException(404, tr("沒有正在執行的任務"))
         jid = job["id"]
 
         async def stream():
@@ -517,19 +522,19 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
     def job_status(job_id: int):
         j = jobq.job(job_id)
         if j is None:
-            raise HTTPException(404, "無此工作")
+            raise HTTPException(404, tr("無此工作"))
         return j
 
     @app.get("/api/jobs/{job_id}/logs")
     def job_logs(job_id: int, after: int = 0):
         if jobq.job(job_id) is None:
-            raise HTTPException(404, "無此工作")
+            raise HTTPException(404, tr("無此工作"))
         return {"logs": jobq.logs(job_id, after)}
 
     @app.post("/api/jobs/{job_id}/cancel")
     def job_cancel(job_id: int):
         if not jobq.request_cancel(job_id):
-            raise HTTPException(409, "工作已完成")
+            raise HTTPException(409, tr("工作已完成"))
         return {"ok": True}
 
     @app.get("/api/projects/{name}/jobs")
@@ -575,7 +580,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                    or os.environ.get("OPENAI_API_KEY"))
         if (s.openai_base_url and s.openai_base_url.rstrip("/") != old_url.rstrip("/")
                 and has_key and not s.openai_api_key):
-            raise HTTPException(400, "變更 OpenAI 相容的 base URL 時，請重新輸入 API 金鑰")
+            raise HTTPException(400, tr("變更 OpenAI 相容的 base URL 時，請重新輸入 API 金鑰"))
         save_global_config({
             # save_global_config rewrites the whole file — carry the audiobook
             # section (default narrator voice etc.) through, or it's wiped
@@ -596,12 +601,21 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         }})
         return {"ok": True}
 
+    @app.put("/api/language")
+    def put_language(body: Language):
+        """The GUI reports the viewer's language on load and on every switch;
+        log lines and error details are rendered in it from then on."""
+        try:
+            return {"lang": set_language(body.lang)}
+        except ValueError:
+            raise HTTPException(400, tr("不支援的語系：{0!r}", body.lang))
+
     @app.get("/api/settings/ollama-models")
     def ollama_models(url: str):
         import httpx
         from urllib.parse import urlsplit
         if urlsplit(url).scheme not in ("http", "https"):
-            raise HTTPException(400, "Ollama URL 必須以 http:// 或 https:// 開頭")
+            raise HTTPException(400, tr("Ollama URL 必須以 http:// 或 https:// 開頭"))
         try:
             r = httpx.get(f"{url.rstrip('/')}/api/tags", timeout=6.0,
                           follow_redirects=False)
@@ -609,10 +623,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             return {"ok": True,
                     "models": [m["name"] for m in r.json().get("models", [])]}
         except httpx.HTTPStatusError as e:
-            return {"ok": False, "error": f"伺服器回應 HTTP {e.response.status_code}"}
+            return {"ok": False, "error": tr("伺服器回應 HTTP {0}", e.response.status_code)}
         except Exception as e:
             # only the error type: the body/details of an arbitrary URL stay server-side
-            return {"ok": False, "error": f"無法連線至 Ollama ({type(e).__name__})"}
+            return {"ok": False, "error": tr("無法連線至 Ollama ({0})", type(e).__name__)}
 
     # ---------------- uploads (videos/photos from the browser, incl. phones)
 
@@ -637,7 +651,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         adding pages can take a while on a long clip)."""
         ws = ws_for(name)
         if jobq.active(name, _EXCLUSIVE_KINDS) is not None:
-            raise HTTPException(409, "已有匯入或處理流程正在執行中 — 請等待其完成")
+            raise HTTPException(409, tr("已有匯入或處理流程正在執行中 — 請等待其完成"))
         uploads = ws.root / "uploads"
         uploads.mkdir(parents=True, exist_ok=True)
         dest = uploads / Path(video.filename or "video.mov").name
@@ -654,7 +668,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         Re-derives everything from preprocess onward for that video's pages."""
         ws = ws_for(name)
         if not any(v["id"] == vid for v in ws.manifest["videos"]):
-            raise HTTPException(404, f"找不到影片 {vid!r}")
+            raise HTTPException(404, tr("找不到影片 {0!r}", vid))
         from ..project import set_video_rotation
         set_video_rotation(ws, vid, rotate, log=lambda m: None)
         ws.stage_reset("preprocess")
@@ -668,7 +682,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         closed tab or a restart) and shows up in the job queue."""
         ws = ws_for(name)
         if jobq.active(name, _EXCLUSIVE_KINDS) is not None:
-            raise HTTPException(409, "已有匯入或處理流程正在執行中 — 請等待其完成")
+            raise HTTPException(409, tr("已有匯入或處理流程正在執行中 — 請等待其完成"))
         uploads = ws.root / "uploads"
         uploads.mkdir(parents=True, exist_ok=True)
         dest = uploads / Path(pdf.filename or "book.pdf").name
@@ -687,7 +701,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         immediately ready to edit, re-export, or narrate as an audiobook."""
         ws = ws_for(name)
         if jobq.active(name, _EXCLUSIVE_KINDS) is not None:
-            raise HTTPException(409, "已有匯入或處理流程正在執行中 — 請等待其完成")
+            raise HTTPException(409, tr("已有匯入或處理流程正在執行中 — 請等待其完成"))
         uploads = ws.root / "uploads"
         uploads.mkdir(parents=True, exist_ok=True)
         dest = uploads / Path(ebook.filename or "book.epub").name
@@ -714,7 +728,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             log=lambda m: None)
         tmp.unlink(missing_ok=True)
         return {"ok": True, "id": page["id"],
-                "transcription": "已延後 — 請執行處理流程"}
+                "transcription": tr("已延後 — 請執行處理流程")}
 
     @app.post("/api/projects/{name}/pages/{page_id}/cover")
     def set_cover(name: str, page_id: str, on: bool = True):
@@ -725,7 +739,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         if on:
             for p in ws.manifest["pages"]:
                 if p is not page and p.get("role") == "cover":
@@ -756,7 +770,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         md_path = ws.dir("pages") / f"{page_id}.md"
         md_path.write_text(edit.markdown, encoding="utf-8")
         page["md"] = f"pages/{page_id}.md"
@@ -773,7 +787,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         from ..textproc import reflow_wrapped
         ws = ws_for(name)
         if ws.page(page_id) is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         return {"markdown": reflow_wrapped(edit.markdown)}
 
     @app.post("/api/projects/{name}/pages/{page_id}/retranscribe")
@@ -783,11 +797,11 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         if not page.get("llm_image"):
-            raise HTTPException(400, "頁面尚未有處理過的影像 — 請先執行處理流程")
+            raise HTTPException(400, tr("頁面尚未有處理過的影像 — 請先執行處理流程"))
         job_id = jobq.enqueue(name, "retry-ocr", {"page_id": page_id},
-                              label=f"重試 OCR {page_id}")
+                              label=tr("重試 OCR {0}", page_id))
         return {"ok": True, "job_id": job_id}
 
     @app.post("/api/projects/{name}/pages/{page_id}/patch")
@@ -799,7 +813,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         cfg = load_config(ws.root)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         patches = ws.root / "patches"
         patches.mkdir(exist_ok=True)
         suffix = Path(photo.filename or "photo.jpg").suffix or ".jpg"
@@ -822,7 +836,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws.stage_reset("transcribe")  # the deferred page must transcribe next run
         ws.save()
         return {"ok": True, "rotated": rotated,
-                "transcription": "已延後 — 請執行處理流程"}
+                "transcription": tr("已延後 — 請執行處理流程")}
 
     def _reconcile(ws):
         from ..stages.transcribe import reconcile
@@ -844,7 +858,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         fields = edit.model_fields_set
         if "printed_number" in fields:
             # the cache keeps the pristine model-read value; manual numbers
@@ -898,7 +912,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         toc = printed_toc(ws)
         if not toc:
-            raise HTTPException(400, "此書未偵測到印刷目錄頁")
+            raise HTTPException(400, tr("此書未偵測到印刷目錄頁"))
         pages = ws.manifest["pages"]
         applied, skipped, unplaced = 0, 0, []
         for entry in toc:
@@ -963,7 +977,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         page = ws.page(page_id)
         figs = (page or {}).get("figures") or []
         if page is None or fig_idx >= len(figs):
-            raise HTTPException(404, "無此圖表")
+            raise HTTPException(404, tr("無此圖表"))
         rel = figs[fig_idx]
         letter = Path(rel).stem.rsplit("_", 1)[-1]
         ridx = ord(letter[0]) - ord("a") if letter and letter[0].isalpha() else fig_idx
@@ -984,10 +998,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
 
         src = source_rel or page.get("color")
         if not src:
-            raise HTTPException(400, "頁面沒有校正後的影像")
+            raise HTTPException(400, tr("頁面沒有校正後的影像"))
         color = cv2.imread(str(ws.root / src))
         if color is None:
-            raise HTTPException(500, "影像無法讀取")
+            raise HTTPException(500, tr("影像無法讀取"))
         h, w = color.shape[:2]
 
         if edit.quad_norm and len(edit.quad_norm) == 4:
@@ -1005,9 +1019,9 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             bbox = [x0, y0, x1, y1]
             stored_quad = None
         else:
-            raise HTTPException(400, "需要 bbox_norm 或 quad_norm")
+            raise HTTPException(400, tr("需要 bbox_norm 或 quad_norm"))
         if crop.shape[0] < 10 or crop.shape[1] < 10:
-            raise HTTPException(400, "裁切範圍太小")
+            raise HTTPException(400, tr("裁切範圍太小"))
         return crop, bbox, stored_quad
 
     def _set_caption(ws, page, rel, region, caption):
@@ -1162,10 +1176,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         page, rel, region = _figure(ws, page_id, fig_idx)
         path = ws.root / rel
         if not path.exists():
-            raise HTTPException(404, "圖表影像遺失")
+            raise HTTPException(404, tr("圖表影像遺失"))
         img = cv2.imread(str(path))
         if img is None:
-            raise HTTPException(422, "無法讀取圖表影像")
+            raise HTTPException(422, tr("無法讀取圖表影像"))
         code = (cv2.ROTATE_90_COUNTERCLOCKWISE if dir == "ccw"
                 else cv2.ROTATE_90_CLOCKWISE)
         cv2.imwrite(str(path), cv2.rotate(img, code))
@@ -1187,7 +1201,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         crop, bbox, stored_quad = _compute_crop(ws, page, edit)
 
         rel = f"figures/{page_id}_{chr(97 + ridx % 26)}.png"
@@ -1263,10 +1277,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None or not page.get("color"):
-            raise HTTPException(404, "無頁面影像")
+            raise HTTPException(404, tr("無頁面影像"))
         color = cv2.imread(str(ws.root / page["color"]))
         if color is None:
-            raise HTTPException(500, "頁面影像無法讀取")
+            raise HTTPException(500, tr("頁面影像無法讀取"))
         if edit.quad_norm:
             q = np.array(edit.quad_norm, dtype=np.float64)
             prior = [float(q[:, 0].min()), float(q[:, 1].min()),
@@ -1287,8 +1301,8 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             if all(_iou(c, b) < 0.6 for b in cands):
                 cands.append(c)
         if not cands:
-            return {"ok": False, "detail": "此處無可信的偵測結果 — "
-                                           "請手動繪製選取框"}
+            return {"ok": False, "detail": tr("此處無可信的偵測結果 — "
+                                           "請手動繪製選取框")}
         # most-relevant first: overlap with the user's current box wins
         cands.sort(key=lambda c: -_iou(c, prior))
         return {"ok": True, "bbox_norm": cands[0], "candidates": cands}
@@ -1300,7 +1314,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         _page, _rel, region = _figure(ws, page_id, fig_idx)
         if region is None:
-            raise HTTPException(404, "圖表沒有對應區塊")
+            raise HTTPException(404, tr("圖表沒有對應區塊"))
         if flag:
             region["needs_reshoot"] = True
         else:
@@ -1324,11 +1338,11 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         cfg = load_config(ws.root)
         if not cfg["provider"].get("anthropic_api_key"):
-            raise HTTPException(400, "請先在設定中新增 Anthropic API 金鑰")
+            raise HTTPException(400, tr("請先在設定中新增 Anthropic API 金鑰"))
         from ..backends import anthropic_enabled
         if not anthropic_enabled(cfg):
-            raise HTTPException(400, "設定中已停用 Anthropic API "
-                                     "— 請啟用以執行 AI 最佳化")
+            raise HTTPException(400, tr("設定中已停用 Anthropic API "
+                                     "— 請啟用以執行 AI 最佳化"))
         from ..backends.anthropic_backend import claude_figure_boxes
         from ..stages.figures import write_figure
 
@@ -1529,7 +1543,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             sharp = float(cv2.Laplacian(img, cv2.CV_64F).var()) if img is not None else -1
             scored.append((sharp, page, rel))
         if len(scored) < 2:
-            raise HTTPException(400, "需要至少兩張圖表才能比較")
+            raise HTTPException(400, tr("需要至少兩張圖表才能比較"))
         scored.sort(key=lambda t: t[0], reverse=True)
         for _sharp, page, rel in scored[1:]:
             _delete_figure(ws, page, rel)
@@ -1557,7 +1571,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             return True
 
         if not await asyncio.to_thread(_decode_write):
-            raise HTTPException(400, "不是可讀取的影像")
+            raise HTTPException(400, tr("不是可讀取的影像"))
         if region is not None:
             region["user_crop"] = True  # never let the figures stage overwrite it
             region["own_image"] = True  # an uploaded photo, not a page crop
@@ -1573,7 +1587,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         try:
             set_page_deleted(ws, page_id, True)
         except KeyError:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         return {"ok": True}
 
     @app.post("/api/projects/{name}/pages/{page_id}/restore")
@@ -1581,13 +1595,13 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is not None and page.get("purged"):
-            raise HTTPException(409, "此頁面的影像已清理 — "
-                                     "請改為重新拍攝")
+            raise HTTPException(409, tr("此頁面的影像已清理 — "
+                                     "請改為重新拍攝"))
         from ..project import set_page_deleted
         try:
             set_page_deleted(ws, page_id, False)
         except KeyError:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         return {"ok": True}
 
     @app.post("/api/projects/{name}/pages/{page_id}/crop-page")
@@ -1596,12 +1610,12 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         if not page.get("patched_source"):
-            raise HTTPException(400, "只有相片來源的頁面才能裁切 "
-                                     "— 影片頁面會自動取景")
+            raise HTTPException(400, tr("只有相片來源的頁面才能裁切 "
+                                     "— 影片頁面會自動取景"))
         if not edit.quad_norm or len(edit.quad_norm) != 4:
-            raise HTTPException(400, "需要 quad_norm 角點座標")
+            raise HTTPException(400, tr("需要 quad_norm 角點座標"))
         cfg = load_config(ws.root)
         from ..project import crop_page_photo
         try:
@@ -1618,10 +1632,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         if not page.get("patched_source"):
-            raise HTTPException(400, "影片來源的頁面 — 請改在 "
-                                     "媒體分頁中翻轉其影片")
+            raise HTTPException(400, tr("影片來源的頁面 — 請改在 "
+                                     "媒體分頁中翻轉其影片"))
         cfg = load_config(ws.root)
         from ..project import rotate_patch
         try:
@@ -1640,7 +1654,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         items = []
         for n in ws.manifest.get("missing_pages", []):
             items.append({"kind": "missing", "number": n,
-                          "label": f"page {n}", "reasons": ["未曾拍攝"]})
+                          "label": f"page {n}", "reasons": [tr("未曾拍攝")]})
         for it in reshoot_list(ws):
             # only pages the user can actually find in the physical book —
             # an internal p#### id means nothing at the bookshelf
@@ -1661,9 +1675,9 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                     items.append({
                         "kind": "figure", "page_id": p["id"], "fig_idx": ri,
                         "number": p["printed_number"],
-                        "label": f"第 {p['printed_number']} 頁的圖表",
-                        "reasons": [f"近拍特寫： "
-                                    f"{r.get('caption') or '圖表'}"],
+                        "label": tr("第 {0} 頁的圖表", p['printed_number']),
+                        "reasons": [tr("近拍"
+                                    "特寫： {0}", r.get('caption') or tr("圖表"))],
                         "preview": expected if expected in figs else None,
                     })
         items.sort(key=lambda i: i["number"])
@@ -1702,7 +1716,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             # fig_idx is the REGION index here (queue items address regions)
             page = ws.page(page_id)
             if page is None:
-                raise HTTPException(404, "找不到該頁面")
+                raise HTTPException(404, tr("找不到該頁面"))
             rel = f"figures/{page_id}_{chr(97 + fig_idx % 26)}.png"
 
             def _decode_write():   # 12MP decode off the event loop
@@ -1716,7 +1730,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                 return True
 
             if not await asyncio.to_thread(_decode_write):
-                raise HTTPException(400, "無法讀取圖片")
+                raise HTTPException(400, tr("無法讀取圖片"))
             if rel not in (page.get("figures") or []):
                 page.setdefault("figures", []).append(rel)
             regions = page.get("regions") or []
@@ -1730,7 +1744,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         elif kind == "reshoot" and page_id:
             page = ws.page(page_id)
             if page is None:
-                raise HTTPException(404, "找不到該頁面")
+                raise HTTPException(404, tr("找不到該頁面"))
             patches = ws.root / "patches"
             patches.mkdir(exist_ok=True)
             dest = patches / f"{page_id}{tmp.suffix or '.jpg'}"
@@ -1781,7 +1795,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             ws.save()
             result = page_id
         else:
-            raise HTTPException(400, "不正確的拍攝類型")
+            raise HTTPException(400, tr("不正確的拍攝類型"))
         tmp.unlink(missing_ok=True)
         return {"ok": True, "page": result}
 
@@ -1794,8 +1808,8 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         p = find_page_by_text(ws, flag.snippet)
         if p is None:
-            raise HTTPException(404, "無法將此段落對應至頁面 — "
-                                     "請改從「頁面」分頁進行標記")
+            raise HTTPException(404, tr("無法將此段落對應至頁面 — "
+                                     "請改從「頁面」分頁進行標記"))
         p["needs_reshoot"] = True
         if flag.note:
             p["flag_note"] = flag.note.strip()
@@ -1849,8 +1863,8 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                 fid = f"{f.parent.name}_{f.stem}"
                 if fid not in referenced:
                     unused_frames.append(f)
-        cat("frames_unused", "無頁面使用的已擷取影格", unused_frames,
-            "翻頁晃動產生的殘餘影格與遭捨棄的群集 — 無任何項目參照")
+        cat("frames_unused", tr("無頁面使用的已擷取影格"), unused_frames,
+            tr("翻頁晃動產生的殘餘影格與遭捨棄的群集 — 無任何項目參照"))
 
         hidden_files = []
         n_hidden = 0
@@ -1863,9 +1877,9 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             for rel in rels:
                 if rel and (ws.root / rel).exists():
                     hidden_files.append(ws.root / rel)
-        cat("hidden_pages", "已隱藏頁面（圖片與頁面項目）", hidden_files,
-            f"從專案中徹底移除全部 {n_hidden} 個已隱藏頁面 — "
-            f"頁面清單將變乾淨，之後無法取消隱藏")
+        cat("hidden_pages", tr("已隱藏頁面（圖片與頁面項目）"), hidden_files,
+            tr("從專案中徹底移除全部 {0} 個已隱藏頁面 — 頁面"
+            "清單將變乾淨，之後無法取消隱藏", n_hidden))
 
         dup_files = []
         n_dups = 0
@@ -1878,10 +1892,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                         + (p.get("figures") or [])):
                 if rel and (ws.root / rel).exists():
                     dup_files.append(ws.root / rel)
-        cat("duplicate_pages", "重複頁面（被取代的拍攝畫面）",
+        cat("duplicate_pages", tr("重複頁面（被取代的拍攝畫面）"),
             dup_files,
-            f"移除全部 {n_dups} 個重複項目 — 每一頁都有品質更好的保留版 "
-            f"拍攝畫面；之後將無法使用「非重複」救援")
+            tr("移除全部 {0} 個重複項目 — 每一頁都有品質更好的保留版 拍"
+            "攝畫面；之後將無法使用「非重複」救援", n_dups))
 
         orphans = []
         pages_dir = ws.root / "work" / "pages"
@@ -1890,15 +1904,15 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                 pid = f.name.split("_")[0]
                 if pid not in live_ids:
                     orphans.append(f)
-        cat("orphans", "已不存在頁面的暫存處理圖片", orphans)
+        cat("orphans", tr("已不存在頁面的暫存處理圖片"), orphans)
 
         thumbs = list((ws.root / "work" / "thumbs").glob("*.jpg")) \
             if (ws.root / "work" / "thumbs").exists() else []
-        cat("thumbs", "縮圖快取", thumbs, "依需求重新產生")
+        cat("thumbs", tr("縮圖快取"), thumbs, tr("依需求重新產生"))
 
         uploads = [f for f in (ws.root / "uploads").glob("*")
                    if f.is_file()] if (ws.root / "uploads").exists() else []
-        cat("uploads", "殘留的上傳暫存檔", uploads)
+        cat("uploads", tr("殘留的上傳暫存檔"), uploads)
 
         return {"videos": videos, "categories": cats}
 
@@ -1996,7 +2010,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         d = load_proof(ws, idx)
         if d is None:
-            raise HTTPException(404, "章節尚未校對")
+            raise HTTPException(404, tr("章節尚未校對"))
         return d
 
     @app.post("/api/projects/{name}/proof/{idx}/run")
@@ -2006,7 +2020,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         job id for completion."""
         ws_for(name)
         job_id = jobq.enqueue(name, "proof-chapter", {"idx": idx},
-                              label=f"校對 ch{idx}")
+                              label=tr("校對 ch{0}", idx))
         return {"ok": True, "job_id": job_id}
 
     @app.post("/api/projects/{name}/proof/{idx}/refresh")
@@ -2021,7 +2035,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         except IndexError as e:
             raise HTTPException(404, str(e))
         if d is None:
-            raise HTTPException(400, "章節尚未校對 — 請先執行校對")
+            raise HTTPException(400, tr("章節尚未校對 — 請先執行校對"))
         return {"ok": True, "status": d.get("status"), "applied": d.get("applied")}
 
     @app.post("/api/projects/{name}/proof/refresh-stale")
@@ -2054,7 +2068,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         """Re-read a garbled passage from its source page image (durable job)."""
         ws_for(name)
         job_id = jobq.enqueue(name, "proof-resolve", {"idx": idx, "fi": fi},
-                              label=f"重新辨識 ch{idx} #{fi}")
+                              label=tr("重新辨識 ch{0} #{1}", idx, fi))
         return {"ok": True, "job_id": job_id}
 
     @app.post("/api/projects/{name}/proof/{idx}/reread-stuck")
@@ -2062,7 +2076,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         """Re-read every stuck page-anchored finding in this chapter (job)."""
         ws_for(name)
         job_id = jobq.enqueue(name, "proof-reread-stuck", {"idx": idx},
-                              label=f"重新辨識停滯的 ch{idx}")
+                              label=tr("重新辨識停滯的 ch{0}", idx))
         return {"ok": True, "job_id": job_id}
 
     @app.post("/api/projects/{name}/proof/{idx}/review")
@@ -2071,7 +2085,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         d = load_proof(ws, idx)
         if d is None:
-            raise HTTPException(404, "章節尚未校對")
+            raise HTTPException(404, tr("章節尚未校對"))
         d["status"] = "accepted" if accept else "rejected"
         save_proof(ws, idx, d)
         return {"ok": True, "status": d["status"]}
@@ -2109,7 +2123,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ids = [it["id"] for it in reocr_list(ws) if it["can_reocr"]]
         for pid in ids:
             jobq.enqueue(name, "retry-ocr", {"page_id": pid},
-                        label=f"重試 OCR {pid}")
+                        label=tr("重試 OCR {0}", pid))
         return {"ok": True, "enqueued": len(ids)}
 
     @app.post("/api/projects/{name}/pages/{page_id}/accept-crops")
@@ -2120,7 +2134,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         page = ws.page(page_id)
         if page is None:
-            raise HTTPException(404, "無此頁面")
+            raise HTTPException(404, tr("無此頁面"))
         if page.get("status") == "suspect":
             from ..review import page_reasons
             page["ignored_reasons"] = page_reasons(page)
@@ -2183,14 +2197,14 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         if not any(p.get("md") and not p.get("role")
                    and p.get("status") not in ("duplicate", "deleted")
                    for p in ws.manifest["pages"]):
-            raise HTTPException(400, "無辨識文字 — 請先執行處理流程")
+            raise HTTPException(400, tr("無辨識文字 — 請先執行處理流程"))
         if jobq.active(name, ("cast-analysis",)) is not None:
-            raise HTTPException(409, "角色配音分析已在執行中")
+            raise HTTPException(409, tr("角色配音分析已在執行中"))
         job_id = jobq.enqueue(name, "cast-analysis",
                               {"only_failed": only_failed,
                                "only_chapters": only_chapters},
-                              label="分析角色配音"
-                                    + (" (重試失敗項目)" if only_failed else "")
+                              label=tr("分析角色配音")
+                                    + (tr(" (重試失敗項目)") if only_failed else "")
                                     + (f" (ch {only_chapters})"
                                        if only_chapters else ""))
         return {"ok": True, "job_id": job_id}
@@ -2204,13 +2218,13 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         from ..casting import load_cast
         ws = ws_for(name)
         if importlib.util.find_spec("parler_tts") is None:
-            raise HTTPException(400, "聲音生成需要 Parler-TTS — "
-                "請執行：pip install git+https://github.com/huggingface/parler-tts.git")
+            raise HTTPException(400, tr("聲音生成需要 Parler-TTS — 請"
+                "執行：pip install git+https://github.com/huggingface/parler-tts.git"))
         cast = load_cast(ws)
         if not cast or character not in (cast.get("characters") or {}):
-            raise HTTPException(404, f"角色 {character!r} 不在角色陣容中")
+            raise HTTPException(404, tr("角色 {0!r} 不在角色陣容中", character))
         job_id = jobq.enqueue(name, "voice-gen", {"character": character},
-                              label=f"生成聲音 ({character})")
+                              label=tr("生成聲音 ({0})", character))
         return {"ok": True, "job_id": job_id}
 
     @app.post("/api/projects/{name}/audiobook-cast/generate-all-voices")
@@ -2221,15 +2235,15 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         from ..casting import load_cast
         ws = ws_for(name)
         if importlib.util.find_spec("parler_tts") is None:
-            raise HTTPException(400, "聲音生成需要 Parler-TTS — "
-                "請執行：pip install git+https://github.com/huggingface/parler-tts.git")
+            raise HTTPException(400, tr("聲音生成需要 Parler-TTS — 請"
+                "執行：pip install git+https://github.com/huggingface/parler-tts.git"))
         cast = load_cast(ws)
         chars = (cast or {}).get("characters") or {}
         n = sum(1 for c in chars.values() if not (c.get("voice") or "").strip())
         if not n:
-            raise HTTPException(400, "每個角色都已經有配音聲音")
+            raise HTTPException(400, tr("每個角色都已經有配音聲音"))
         job_id = jobq.enqueue(name, "voice-gen-all", {},
-                              label=f"生成所有聲音 ({n})")
+                              label=tr("生成所有聲音 ({0})", n))
         return {"ok": True, "job_id": job_id, "count": n}
 
     @app.post("/api/projects/{name}/audiobook-cast/voice-prompt")
@@ -2251,7 +2265,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         from ..casting import assign_voice
         ws = ws_for(name)
         if voice and resolve_voice(ws, root / "voices", voice) is None:
-            raise HTTPException(404, f"找不到聲音 {voice!r}")
+            raise HTTPException(404, tr("找不到聲音 {0!r}", voice))
         try:
             assign_voice(ws, character, voice)
         except (FileNotFoundError, KeyError) as e:
@@ -2269,7 +2283,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         voice = voice.strip()
         if voice and resolve_voice(ws, root / "voices", voice) is None:
-            raise HTTPException(404, f"找不到聲音 {voice!r}")
+            raise HTTPException(404, tr("找不到聲音 {0!r}", voice))
         text = PREVIEW_LINE
         if character:
             cast = load_cast(ws) or {}
@@ -2278,14 +2292,14 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                 text = ch["samples"][0]
         job_id = jobq.enqueue(name, "tts-preview",
                               {"voice": voice, "text": text},
-                              label=f"預覽聲音 ({voice or '內建'})")
+                              label=tr("預覽聲音 ({0})", voice or tr("內建")))
         return {"ok": True, "job_id": job_id}
 
     @app.get("/api/voice-previews/{fname}")
     def voice_preview_file(fname: str):
         f = root / "voices" / "previews" / fname
         if not within(root / "voices" / "previews", f) or not f.is_file():
-            raise HTTPException(404, "無此預覽")
+            raise HTTPException(404, tr("無此預覽"))
         return FileResponse(f, media_type="audio/wav")
 
     @app.get("/api/projects/{name}/audiobook-estimate")
@@ -2312,23 +2326,23 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             import chatterbox  # noqa: F401 — presence check only
         except ImportError:
             raise HTTPException(400,
-                "未安裝本機語音引擎 — 請執行： "
-                "pip install chatterbox-tts (加上支援 CUDA 的 torch 以使用 GPU 加速)")
+                tr("未安裝本機語音引擎 — 請執行： p"
+                "ip install chatterbox-tts (加上支援 CUDA 的 torch 以使用 GPU 加速)"))
         if not any(p.get("md") and not p.get("role")
                    and p.get("status") not in ("duplicate", "deleted")
                    for p in ws.manifest["pages"]):
-            raise HTTPException(400, "無辨識文字 — 請先執行處理流程")
+            raise HTTPException(400, tr("無辨識文字 — 請先執行處理流程"))
         voice = voice.strip()
         from ..audiobook import resolve_voice
         if voice and resolve_voice(ws, root / "voices", voice) is None:
-            raise HTTPException(404, f"找不到聲音 {voice!r}")
+            raise HTTPException(404, tr("找不到聲音 {0!r}", voice))
         if use_cast:
             from ..casting import load_cast
             if load_cast(ws) is None:
-                raise HTTPException(400, "尚未進行角色配音分析 — 請先執行 "
-                                         "「分析角色」")
+                raise HTTPException(400, tr("尚未進行角色配音分析 — 請先執行"
+                                         " 「分析角色」"))
         if jobq.active(name, ("audiobook",)) is not None:
-            raise HTTPException(409, "有聲書建置已在執行中")
+            raise HTTPException(409, tr("有聲書建置已在執行中"))
         speed = max(0.5, min(3.0, speed))
         chapters = ",".join(x for x in chapters.split(",") if x.strip().isdigit())
         sample_note = ""
@@ -2338,7 +2352,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             titles = [rows[int(x)]["title"] for x in chapters.split(",")
                       if int(x) < len(rows)]
             sample_note = f", sample: {', '.join(titles) or 'ch ' + chapters}"
-        label = f"audiobook ({voice or '內建聲音'}" \
+        label = f"audiobook ({voice or tr("內建聲音")}" \
                 + (f", {speed:g}x" if speed != 1.0 else "") \
                 + (", cast" if use_cast else "") + sample_note + ")"
         job_id = jobq.enqueue(name, "audiobook",
@@ -2367,7 +2381,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         from ..ffmpeg import _find as _ff
         clean = re.sub(r"[^A-Za-z0-9 _-]+", "", voice_name).strip()
         if not clean:
-            raise HTTPException(400, "請為聲音命名")
+            raise HTTPException(400, tr("請為聲音命名"))
         vdir = root / "voices"
         vdir.mkdir(exist_ok=True)
         raw = vdir / "_upload.tmp"
@@ -2379,8 +2393,8 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                  "-i", str(raw), "-ar", "24000", "-ac", "1", "-t", "40",
                  str(out)], capture_output=True, text=True)
             if r.returncode != 0:
-                raise HTTPException(400, f"無法讀取該音訊檔案： "
-                                         f"{r.stderr[-200:]}")
+                raise HTTPException(400, tr("無法讀取該音"
+                                         "訊檔案： {0}", r.stderr[-200:]))
         finally:
             raw.unlink(missing_ok=True)
         return {"ok": True, "name": clean, "voices": _voice_names()}
@@ -2391,9 +2405,9 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         as the preselected narrator on every book ('' = the built-in voice)."""
         voice_name = voice_name.strip()
         if voice_name and not (root / "voices" / f"{voice_name}.wav").exists():
-            raise HTTPException(404, f"聲音 {voice_name!r} 不在共享庫中 "
-                                     "（書本專屬的聲音不能設為 "
-                                     "全域預設值）")
+            raise HTTPException(404, tr("聲音 {0!r} 不在共享庫中 （書本"
+                                     "專屬的聲音不能設為 "
+                                     "全域預設值）", voice_name))
         cfg_now = load_config()
         save_global_config({
             "provider": cfg_now["provider"],
@@ -2406,7 +2420,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
     def delete_voice(voice_name: str):
         f = root / "voices" / f"{voice_name}.wav"
         if f.parent.resolve() != (root / "voices").resolve() or not within(root / "voices", f):
-            raise HTTPException(400, "無效的聲音名稱")
+            raise HTTPException(400, tr("無效的聲音名稱"))
         f.unlink(missing_ok=True)
         return {"ok": True, "voices": _voice_names()}
 
@@ -2451,7 +2465,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                                    author=ws.manifest["book"].get("author"),
                                    log=lambda m: None)
             else:
-                raise HTTPException(400, f"未知的格式 {format!r}")
+                raise HTTPException(400, tr("未知的格式 {0!r}", format))
         except (RuntimeError, FileNotFoundError) as e:
             raise HTTPException(400, str(e))
         # record what this output was built from (per-component, so the stale
@@ -2470,10 +2484,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         src = (ws.root / path).resolve()
         if not within(ws.root, src) or not src.is_file():
-            raise HTTPException(404, "找不到")
+            raise HTTPException(404, tr("找不到"))
         # judge the RESOLVED path: "videos/../config.toml" must not pass as "videos"
         if src.relative_to(ws.root.resolve()).parts[0] not in SERVABLE:
-            raise HTTPException(403, "無法提供存取")
+            raise HTTPException(403, tr("無法提供存取"))
         w = max(64, min(2000, w))
         st = src.stat()
         etag = f'"{st.st_mtime_ns}-{st.st_size}-{w}"'
@@ -2487,7 +2501,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         if not out.exists():
             img = cv2.imread(str(src))
             if img is None:
-                raise HTTPException(500, "無法讀取圖片")
+                raise HTTPException(500, tr("無法讀取圖片"))
             h0, w0 = img.shape[:2]
             if w0 > w:
                 img = cv2.resize(img, (w, int(h0 * w / w0)),
@@ -2501,10 +2515,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         ws = ws_for(name)
         target = (ws.root / path).resolve()
         if not within(ws.root, target) or not target.is_file():
-            raise HTTPException(404, "找不到")
+            raise HTTPException(404, tr("找不到"))
         top = target.relative_to(ws.root.resolve()).parts[0]
         if top not in SERVABLE:
-            raise HTTPException(403, "無法提供存取")
+            raise HTTPException(403, tr("無法提供存取"))
         # extracted frames are immutable; everything else (corrected pages,
         # figures, patches, outputs) gets rewritten in place — always revalidate
         headers = None if top == "frames" else {"Cache-Control": "no-cache"}
@@ -2534,7 +2548,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
     def static_file(path: str):
         target = (static_dir / path).resolve()
         if not within(static_dir, target) or not target.is_file():
-            raise HTTPException(404, "找不到")
+            raise HTTPException(404, tr("找不到"))
         cache = ("max-age=86400" if path.startswith("vendor/")  # libs are pinned
                  else "no-cache")
         return FileResponse(target, headers={"Cache-Control": cache})
@@ -2568,8 +2582,8 @@ def serve(root: Path, host: str = "127.0.0.1", port: int = 8321) -> None:
     probe.close()
     if already:
         raise SystemExit(
-            f"FlipScan 已在通訊埠 {port} 上執行 — 請開啟 "
-            f"http://localhost:{port}，或先停止另一個執行個體。")
+            tr("FlipScan 已在通訊埠 {0} 上執行 — 請開啟 "
+            "http://localhost:{1}，或先停止另一個執行個體。", port, port))
 
     # ONE app (one job-queue worker pool), served on two ports: plain http on
     # `port`, and https with a self-signed cert on `port+1` — phone browsers
@@ -2587,5 +2601,5 @@ def serve(root: Path, host: str = "127.0.0.1", port: int = 8321) -> None:
         threading.Thread(target=uvicorn.Server(https_cfg).run,
                          name="flipscan-https", daemon=True).start()
     except Exception as e:                       # https is a nicety, not a need
-        print(f"  (https 監聽器未啟動: {e})")
+        print(tr("  (https 監聽器未啟動: {0})", e))
     uvicorn.run(app, host=host, port=port, log_level="warning")

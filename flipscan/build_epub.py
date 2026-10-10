@@ -9,6 +9,7 @@ import markdown as md_lib
 from ebooklib import epub
 
 from .workspace import Workspace
+from .i18n import tr
 
 _IMG = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
 
@@ -44,7 +45,7 @@ def build_epub(ws: Workspace, out_path: Path, title: str | None = None,
                author: str | None = None, device: str = "none", log=print) -> Path:
     book_md_path = ws.work_file("book.md")
     if not book_md_path.exists():
-        raise FileNotFoundError("找不到 work/book.md — 請先執行處理流程 (assemble)")
+        raise FileNotFoundError(tr("找不到 work/book.md — 請先執行處理流程 (assemble)"))
     book_md = book_md_path.read_text(encoding="utf-8")
 
     meta = ws.manifest["book"]
@@ -167,6 +168,6 @@ def build_epub(ws: Workspace, out_path: Path, title: str | None = None,
     book.add_item(epub.EpubNcx())
     book.add_item(epub.EpubNav())
     epub.write_epub(str(out_path), book)
-    log(f"EPUB 已寫入：{out_path} ({len(chapters)} 個章節，"
-        f"{proofed_count} 個已校對，{len(added_images)} 張圖片)")
+    log(tr("EPUB 已寫入：{0} ({1} 個"
+        "章節，{2} 個已校對，{3} 張圖片)", out_path, len(chapters), proofed_count, len(added_images)))
     return out_path

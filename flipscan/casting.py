@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Callable
 
 from .workspace import Workspace
+from .i18n import tr
 
 MAX_QUOTES_PER_CHAPTER = 400
 SAMPLES_PER_CHARACTER = 3
@@ -115,7 +116,7 @@ def _parse_cast(raw: str) -> dict:
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.S)
     start, end = text.find("{"), text.rfind("}")
     if start == -1 or end <= start:
-        raise ValueError(f"角色配音回應中找不到 JSON：{raw[:200]!r}")
+        raise ValueError(tr("角色配音回應中找不到 JSON：{0!r}", raw[:200]))
     obj = json.loads(text[start:end + 1])
     chars = [{"name": str(c.get("name", "")).strip(),
               "description": str(c.get("description", "")).strip(),
@@ -253,10 +254,10 @@ def save_cast(ws: Workspace, cast: dict) -> None:
 def assign_voice(ws: Workspace, character: str, voice: str) -> dict:
     cast = load_cast(ws)
     if cast is None:
-        raise FileNotFoundError("尚未進行角色配音分析 — 請先執行 「分析角色」")
+        raise FileNotFoundError(tr("尚未進行角色配音分析 — 請先執行 「分析角色」"))
     ch = cast["characters"].get(character)
     if ch is None:
-        raise KeyError(f"未知的角色 {character!r}")
+        raise KeyError(tr("未知的角色 {0!r}", character))
     ch["voice"] = voice
     save_cast(ws, cast)
     return cast
@@ -364,8 +365,8 @@ def analyze_book(ws: Workspace, cfg: dict,
                 parsed = _salvage_cast(raw) if raw else {"characters": [],
                                                          "quotes": []}
                 if parsed["quotes"] or parsed["characters"]:
-                    log(f"    某個視窗的回應格式異常 — 已從中挽救 "
-                        f"{len(parsed['quotes'])} 則引文")
+                    log(tr("    某個視窗的回應格式異常"
+                        " — 已從中挽救 {0} 則引文", len(parsed['quotes'])))
                 else:
                     errs.append(str(e)[:120])
                     continue
@@ -373,20 +374,20 @@ def analyze_book(ws: Workspace, cfg: dict,
             all_quotes += parsed["quotes"]
         if errs and not all_quotes and not all_chars:
             err = errs[0]
-            log(f"    分析失敗 ({err[:80]}) — 本章節維持 "
-                f"純旁白")
+            log(tr("    分析失敗 ({0}) — 本章節維持"
+                " 純旁白", err[:80]))
             chapters.append({"title": title, "quotes": [], "characters": [],
                              "error": err})
             continue
         if errs:
-            log(f"    注意：{len(errs)}/{len(parts)} 個視窗未產生 "
-                f"任何可用內容")
+            log(tr("    注意：{0}/{1} 個視窗未產生 任"
+                "何可用內容", len(errs), len(parts)))
         parsed = {"characters": all_chars,
                   "quotes": all_quotes[:MAX_QUOTES_PER_CHAPTER]}
         located = locate_quotes(text, parsed["quotes"])
         real = [q for q in located if q["speaker"] != "NARRATOR"]
-        log(f"    回報 {len(parsed['quotes'])} 則引文， "
-            f"{len(located)} 則在內文中比對成功，{len(real)} 則已歸屬角色")
+        log(tr("    回報 {0} 則引文， {1}"
+            " 則在內文中比對成功，{2} 則已歸屬角色", len(parsed['quotes']), len(located), len(real)))
         chapters.append({"title": title,
                          "quotes": [{"q": q["q"], "speaker": q["speaker"]}
                                     for q in located],
@@ -396,8 +397,8 @@ def analyze_book(ws: Workspace, cfg: dict,
             "characters": characters}
     save_cast(ws, cast)
     failed = [r["title"] for r in chapters if r.get("error")]
-    log(f"  角色配音：{len(characters)} 位有台詞的角色， "
-        f"{sum(c['quotes'] for c in characters.values())} 則已歸屬引文"
+    log(tr("  角色配音：{0} 位"
+        "有台詞的角色， {1} 則已歸屬引文", len(characters), sum(c['quotes'] for c in characters.values()))
         + (f" — {len(failed)} chapter(s) FAILED: {', '.join(failed[:4])}"
            if failed else ""))
     return cast

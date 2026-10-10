@@ -12,6 +12,7 @@ import cv2
 
 from ..imaging import detect_page_quad, phash64, quad_crop, sharpness, skin_fraction
 from ..workspace import Workspace
+from ..i18n import tr
 
 
 def load_scores(ws: Workspace, video_id: str) -> list[dict]:
@@ -36,7 +37,7 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         if out_path.exists():
             with open(out_path, encoding="utf-8") as f:
                 if len(json.load(f)) == len(frames):
-                    log(f"  {vid}: 分數已存在，略過")
+                    log(tr("  {0}: 分數已存在，略過", vid))
                     continue
         log(f"  {vid}: scoring {len(frames)} frames")
         records = []

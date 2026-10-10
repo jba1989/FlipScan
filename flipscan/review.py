@@ -8,9 +8,11 @@ import markdown as md_lib
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 from .workspace import Workspace
+from .i18n import tr
 
 
-# reason prefixes the reshoot list filters on (informational / crop-list items)
+# reason prefixes the reshoot list filters on (informational / crop-list items);
+# compare against tr(...) of these — reasons are rendered in the display language
 NOTE_PREFIX = "提醒："
 NO_CROP_PREFIX = "圖表區塊 "
 NO_CROP_SUFFIX = " 還沒有裁切"
@@ -58,40 +60,40 @@ def page_reasons(p: dict) -> list[str]:
     ignored = bool(p.get("suspect_ignored"))
     reasons = []
     if p.get("transcribe_error"):
-        reasons.append(f"文字辨識失敗（{p['transcribe_error'][:80]}）")
+        reasons.append(tr("文字辨識失敗（{0}）", p['transcribe_error'][:80]))
     if not ignored:
         if p.get("confidence") == "low":
-            reasons.append("辨識信心度低")
+            reasons.append(tr("辨識信心度低"))
         for f in p.get("flags") or []:
             if f == "multi_column":
                 # a reshoot can't fix a layout; the model reads both columns —
                 # this is only a check-the-reading-order note
-                reasons.append(f"{NOTE_PREFIX}多欄版面 — 請確認文字順序")
+                reasons.append(tr("{0}多欄版面 — 請確認文字順序", tr(NOTE_PREFIX)))
             else:
-                reasons.append(f"標記：{FLAG_LABELS.get(f, f)}")
+                reasons.append(tr("標記：{0}", tr(FLAG_LABELS.get(f, f))))
         if p.get("figure_quality"):
-            reasons.append("圖表來源影格品質不佳")
+            reasons.append(tr("圖表來源影格品質不佳"))
     if p.get("needs_reshoot"):
-        note = f" — 「{p['flag_note']}」" if p.get("flag_note") else ""
-        reasons.append(f"你已標記為需要重拍{note}")
+        note = tr(" — 「{0}」", p['flag_note']) if p.get("flag_note") else ""
+        reasons.append(tr("你已標記為需要重拍{0}", note))
     if any(r.get("needs_reshoot") for r in p.get("regions") or []):
-        reasons.append("圖表已標記為需要重拍（請近拍）")
+        reasons.append(tr("圖表已標記為需要重拍（請近拍）"))
     if any(r.get("stale_crop") for r in p.get("regions") or []):
-        reasons.append("圖表裁切框是在舊的頁面影像上畫的 — 請重新裁切")
+        reasons.append(tr("圖表裁切框是在舊的頁面影像上畫的 — 請重新裁切"))
     if p.get("number_rejected"):
-        reasons.append("頁碼辨識錯誤（打亂了頁面順序）")
+        reasons.append(tr("頁碼辨識錯誤（打亂了頁面順序）"))
     if p.get("number_conflict"):
-        reasons.append("拍攝畫面比這裡能放的頁碼還多")
+        reasons.append(tr("拍攝畫面比這裡能放的頁碼還多"))
     figs = p.get("figures") or []
     for ri, r in enumerate(p.get("regions") or []):
         expected = f"figures/{p['id']}_{chr(97 + ri % 26)}.png"
         if not r.get("deleted") and expected not in figs:
-            reasons.append(f"{NO_CROP_PREFIX}{ri}{NO_CROP_SUFFIX}")
+            reasons.append(f"{tr(NO_CROP_PREFIX)}{ri}{tr(NO_CROP_SUFFIX)}")
             break
     if p["status"] == "suspect" and not reasons and not ignored:
-        reasons.append("拍攝品質不佳（聚類過短或影格評分過低）")
+        reasons.append(tr("拍攝品質不佳（聚類過短或影格評分過低）"))
     if p["status"] == "missing":
-        reasons.append("未擷取到可用的影格")
+        reasons.append(tr("未擷取到可用的影格"))
     return reasons
 
 
@@ -176,8 +178,9 @@ def reshoot_list(ws: Workspace) -> list[dict]:
         # informational notes (multi-column etc.) don't justify a reshoot; the
         # 'no crop' note is handled by the crop list
         reasons = [r for r in page_reasons(p)
-                   if not r.startswith(NOTE_PREFIX)
-                   and not (r.startswith(NO_CROP_PREFIX) and r.endswith(NO_CROP_SUFFIX))]
+                   if not r.startswith(tr(NOTE_PREFIX))
+                   and not (r.startswith(tr(NO_CROP_PREFIX))
+                            and r.endswith(tr(NO_CROP_SUFFIX)))]
         if reasons:
             items.append({"id": p["id"], "printed_number": p.get("printed_number"),
                           "reasons": reasons})
@@ -202,7 +205,7 @@ def generate_review(ws: Workspace, log=print) -> Path:
             **p,
             "image": image,
             "html": md_lib.markdown(md_text, extensions=["tables"]) if md_text
-                    else "<em>無辨識結果</em>",
+                    else tr("<em>無辨識結果</em>"),
         })
 
     from .stages.transcribe import format_ranges
@@ -217,5 +220,5 @@ def generate_review(ws: Workspace, log=print) -> Path:
         missing=missing,
         missing_ranges=format_ranges(missing),
     ), encoding="utf-8")
-    log(f"校對審閱頁面：{out}")
+    log(tr("校對審閱頁面：{0}", out))
     return out

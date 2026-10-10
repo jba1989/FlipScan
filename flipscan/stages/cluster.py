@@ -25,6 +25,7 @@ import statistics
 from ..imaging import majority_hash
 from ..workspace import Workspace
 from .score import load_scores
+from ..i18n import tr
 
 
 def _rest_mask(records: list[dict], spike_factor: float) -> tuple[list[bool], float]:
@@ -103,7 +104,7 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         ]
         if video.get("direction") == "reverse":
             seq.reverse()
-        log(f"  {vid}：擷取到 {len(clusters)} 個頁面")
+        log(tr("  {0}：擷取到 {1} 個頁面", vid, len(clusters)))
         entries.extend(seq)
 
     pages = []
@@ -144,10 +145,10 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
     detected = sum(1 for p in pages if not p.get("role"))
     if expected and detected != expected:
         warnings.append(
-            f"目前已找到 {detected} 個頁面，預期為 {expected} 個 — 等 transcription 讀取頁碼後，"
-            f"重複項將會合併且順序將會確立")
+            tr("目前已找到 {0} 個頁面，預期為 {1} 個 — 等 transcription 讀取頁碼後，重"
+            "複項將會合併且順序將會確立", detected, expected))
     for w in warnings:
         log(f"  WARNING: {w}")
     ws.stage_done("cluster", page_count=len(pages), warnings=warnings)
-    log(f"  共擷取到 {len(pages)} 個頁面（transcribe 透過印刷頁碼辨識後，重複項將會"
-        f"合併）")
+    log(tr("  共擷取到 {0} 個頁面（transcribe 透過印刷頁碼辨識後，重複項將"
+        "會合併）", len(pages)))

@@ -17,6 +17,7 @@ from __future__ import annotations
 import gc
 import re
 from pathlib import Path
+from .i18n import tr
 
 # spoken while minting the sample — attribute-rich, neutral content
 _SAMPLE_TEXT = ("The evening settled over the airfield as the last light "
@@ -53,7 +54,7 @@ def generate_voice_samples(items: list[tuple[str, Path]], log=print,
     batch and is released afterwards so audiobook synthesis gets the GPU back.
     Cancellation is honored between items; finished wavs are kept."""
     import torch
-    log(f"  voice-gen: 正在載入 {_MODEL_ID}…")
+    log(tr("  voice-gen: 正在載入 {0}…", _MODEL_ID))
     from parler_tts import ParlerTTSForConditionalGeneration
     from transformers import AutoTokenizer
     device = "cuda" if torch.cuda.is_available() else "cpu"

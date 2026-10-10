@@ -16,6 +16,7 @@ from .config import load_config
 from .jobs import JobCanceled, JobQueue
 from .project import retry_ocr_page, run_pipeline
 from .workspace import Workspace
+from .i18n import tr
 
 
 # Lanes group jobs by how they may overlap:
@@ -64,7 +65,7 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
     def ws_for(name: str) -> Workspace:
         target = (root / name).resolve()
         if not target.is_relative_to(root) or not (target / "manifest.json").exists():
-            raise FileNotFoundError(f"找不到專案 {name!r}")
+            raise FileNotFoundError(tr("找不到專案 {0!r}", name))
         return Workspace.open(target)
 
     def pipeline(project, params, log, should_cancel):
@@ -79,22 +80,22 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
             log(str(m))
 
         run_pipeline(ws, cfg, force=params.get("force", False), log=cb)
-        log("[pipeline] 完成")
+        log(tr("[pipeline] 完成"))
 
     def proof_chapter(project, params, log, should_cancel):
         from .proofread import proofread_chapter
         ws = ws_for(project)
         cfg = load_config(ws.root)
         d = proofread_chapter(ws, cfg, int(params["idx"]))
-        log(f"第 {params['idx']} 章：校對完成 "
-            f"（發現 {len(d.get('findings', []))} 個問題）")
+        log(tr("第 {0} 章：校對"
+            "完成 （發現 {1} 個問題）", params['idx'], len(d.get('findings', []))))
 
     def proof_resolve(project, params, log, should_cancel):
         from .proofread import resolve_finding
         ws = ws_for(project)
         cfg = load_config(ws.root)
         d = resolve_finding(ws, cfg, int(params["idx"]), int(params["fi"]))
-        log("重新辨識完成")
+        log(tr("重新辨識完成"))
         return d
 
     def proof_reread_stuck(project, params, log, should_cancel):
@@ -102,14 +103,14 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
         ws = ws_for(project)
         cfg = load_config(ws.root)
         d = reread_chapter_stuck(ws, cfg, int(params["idx"]))
-        log(f"卡住的項目重新辨識完成：{d.get('rescued', 0)} 個已自動修復，"
-            f"{d.get('still_manual', 0)} 個仍需手動處理")
+        log(tr("卡住的項目重新辨識完成：{0} 個已"
+            "自動修復，{1} 個仍需手動處理", d.get('rescued', 0), d.get('still_manual', 0)))
         return d
 
     def retry_ocr(project, params, log, should_cancel):
         ws = ws_for(project)
         retry_ocr_page(ws, params["page_id"])
-        log(f"{params['page_id']} 重新嘗試 OCR 完成")
+        log(tr("{0} 重新嘗試 OCR 完成", params['page_id']))
 
     def pdf_import(project, params, log, should_cancel):
         from .project import add_pages_from_pdf
@@ -123,7 +124,7 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
                 dest.unlink(missing_ok=True)   # don't let cleanup mask success
             except OSError:
                 pass
-        log(f"已從 {dest.name} 匯入 {n} 個頁面")
+        log(tr("已從 {0} 匯入 {1} 個頁面", dest.name, n))
         return {"pages": n}
 
     def epub_import(project, params, log, should_cancel):
@@ -142,14 +143,14 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
         # assemble immediately — an imported ebook should be instantly ready
         # (estimate, proof tab, builds) with no extra step
         assemble_run(ws, cfg, log=lambda m: None)
-        log(f"已從 {dest.name} 匯入 {n} 個項目")
+        log(tr("已從 {0} 匯入 {1} 個項目", dest.name, n))
         return {"pages": n}
 
     def video_import(project, params, log, should_cancel):
         from .project import add_video
         ws = ws_for(project)
         entry = add_video(ws, Path(params["path"]), log=log)
-        log(f"已加入影片 {entry['id']}")
+        log(tr("已加入影片 {0}", entry['id']))
         return {"id": entry["id"]}
 
     def audiobook(project, params, log, should_cancel):
@@ -168,7 +169,7 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
             from .audiobook import resolve_voice
             vpath = resolve_voice(ws, root / "voices", vname)
             if vpath is None:
-                raise FileNotFoundError(f"找不到聲音 {vname!r}")
+                raise FileNotFoundError(tr("找不到聲音 {0!r}", vname))
             voice = str(vpath)
         # narrate from a book.md that reflects the current pages (same
         # regenerate-before-packaging rule as the build endpoint)
@@ -205,9 +206,9 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
                 chslug += f"--first{max(1, round(head_chars / 1216))}min"
         out = (ws.dir("out")
                / f"{ws.root.name}--{vslug}{sslug}{cslug}{chslug}--{stamp}.m4b")
-        log(f"voice: {vname or '內建旁白'}"
+        log(f"voice: {vname or tr("內建旁白")}"
             + (f", {speed:g}x speed" if speed != 1.0 else "")
-            + (", 完整角色配音" if use_cast else "")
+            + (tr(", 完整角色配音") if use_cast else "")
             + (f", chapters {chapters}" if chapters else "") + f" -> {out.name}")
         build_audiobook(ws, cfg, out, voice=voice, speed=speed,
                         use_cast=use_cast, voices_dir=root / "voices",
@@ -249,7 +250,7 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
         if vname:
             vp = resolve_voice(ws, root / "voices", vname)
             if vp is None:
-                raise FileNotFoundError(f"找不到聲音 {vname!r}")
+                raise FileNotFoundError(tr("找不到聲音 {0!r}", vname))
             voice = str(vp)
             vhash = hashlib.sha1(vp.read_bytes()).hexdigest()[:8]
         text = (params.get("text") or "").strip()
@@ -259,10 +260,10 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
         key = hashlib.sha1(f"{vname}|{vhash}|{text}".encode("utf-8")).hexdigest()[:12]
         out = pdir / f"{vname or 'builtin'}--{key}.wav"
         if not out.exists():
-            log(f"preview: {vname or '內建旁白'} — synthesizing…")
+            log(f"preview: {vname or tr("內建旁白")} — synthesizing…")
             synthesize_preview(cfg, text, voice, out)
         else:
-            log("預覽：已快取")
+            log(tr("預覽：已快取"))
         return {"file": out.name}
 
     def voice_gen(project, params, log, should_cancel):
@@ -274,7 +275,7 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
         cast = load_cast(ws)
         ch = (cast or {}).get("characters", {}).get(character)
         if ch is None:
-            raise FileNotFoundError(f"角色 {character!r} 不在配音名單中")
+            raise FileNotFoundError(tr("角色 {0!r} 不在配音名單中", character))
         vname = _re.sub(r"[^A-Za-z0-9 _-]+", "", character).strip() or "generated"
         # generated character voices are BOOK-scoped — Count Zeppelin belongs
         # to his book, not every book's voice menu
@@ -284,7 +285,7 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
             ch.get("description", ""), ch.get("sounds_like", ""))
         generate_voice_sample(desc, out, log=log)
         assign_voice(ws, character, vname)   # cast it immediately
-        log(f"聲音 {vname!r} 已加入聲音庫並指派給 {character}")
+        log(tr("聲音 {0!r} 已加入聲音庫並指派給 {1}", vname, character))
         return {"voice": vname}
 
     def voice_gen_all(project, params, log, should_cancel):
@@ -306,14 +307,14 @@ def register_handlers(jobq: JobQueue, root: Path) -> None:
             todo.append((cname, vname, desc,
                          ws.root / "voices" / f"{vname}.wav"))
         if not todo:
-            log("每個角色都已有聲音 — 無需產生")
+            log(tr("每個角色都已有聲音 — 無需產生"))
             return {"generated": 0}
-        log(f"正在產生 {len(todo)} 個聲音（整批載入一次 Parler）…")
+        log(tr("正在產生 {0} 個聲音（整批載入一次 Parler）…", len(todo)))
         made = generate_voice_samples([(d, out) for _, _, d, out in todo],
                                       log=log, should_cancel=should_cancel)
         for (cname, vname, _, out) in todo[:len(made)]:
             assign_voice(ws, cname, vname)
-        log(f"已產生 {len(made)} 個聲音並完成角色配音")
+        log(tr("已產生 {0} 個聲音並完成角色配音", len(made)))
         return {"generated": len(made)}
 
     jobq.register("pdf-import", pdf_import)

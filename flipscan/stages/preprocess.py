@@ -26,6 +26,7 @@ from ..workres import ink_mask
 from ..workspace import Workspace
 from .score import scores_by_frame_id
 from .select import frame_path
+from ..i18n import tr
 
 
 def _video_rotation(ws: Workspace, frame_id: str | None) -> int:
@@ -273,12 +274,12 @@ def auto_detect_orientation(ws: Workspace, cfg: dict,
         verdict = backend.check_orientation(sample) if sample else None
         if verdict is None:
             video["rotate"] = 0  # can't tell (or mock) — assume normal
-            log(f"  {video['id']}: 無法檢查方向，假設為正常方向")
+            log(tr("  {0}: 無法檢查方向，假設為正常方向", video['id']))
         else:
             set_video_rotation(ws, video["id"], 180 if verdict else 0,
                                log=lambda m: None)
-            log(f"  {video['id']}: 自動偵測為 "
-                f"{'上下顛倒 — 將進行旋轉' if verdict else '正常方向'}")
+            log(tr("  {0}:"
+                " 自動偵測為 {1}", video['id'], tr("上下顛倒 — 將進行旋轉") if verdict else tr("正常方向")))
     ws.save()
 
 
@@ -292,4 +293,4 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
             log(f"  {i + 1}/{len(pages)}")
     ws.save()
     ws.stage_done("preprocess")
-    log(f"  已校正 {len(pages)} 個頁面 -> work/pages/")
+    log(tr("  已校正 {0} 個頁面 -> work/pages/", len(pages)))

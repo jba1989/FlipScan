@@ -8,6 +8,7 @@ import shutil
 import subprocess
 from fractions import Fraction
 from pathlib import Path
+from .i18n import tr
 
 
 class FFmpegNotFound(RuntimeError):
@@ -28,8 +29,8 @@ def _find(tool: str) -> str:
         if candidate.exists():
             return str(candidate)
     raise FFmpegNotFound(
-        f"找不到 {tool}。請安裝 ffmpeg (winget install Gyan.FFmpeg / apt install ffmpeg) "
-        f"或將 FLIPSCAN_{tool.upper()} 設為其路徑。"
+        tr("找不到 {0}。請安裝 ffmpeg (winget install Gyan.FFmpeg / apt install "
+        "ffmpeg) 或將 FLIPSCAN_{1} 設為其路徑。", tool, tool.upper())
     )
 
 

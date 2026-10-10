@@ -14,6 +14,7 @@ from anthropic.types.messages.batch_create_params import Request
 
 from . import (ORIENTATION_PROMPT, PROMPT, TranscriptionBackend,
                TranscriptionError, parse_orientation, parse_result)
+from ..i18n import tr
 
 
 class AnthropicBackend(TranscriptionBackend):
@@ -71,7 +72,7 @@ class AnthropicBackend(TranscriptionBackend):
             ))
 
         batch = self.client.messages.batches.create(requests=requests)
-        log(f"  anthropic: 批次 {batch.id} 已提交 ({len(requests)} 頁)")
+        log(tr("  anthropic: 批次 {0} 已提交 ({1} 頁)", batch.id, len(requests)))
 
         while True:
             batch = self.client.messages.batches.retrieve(batch.id)
@@ -93,9 +94,9 @@ class AnthropicBackend(TranscriptionBackend):
                 except TranscriptionError as e:
                     results[pid] = {"error": str(e)}
             else:
-                results[pid] = {"error": f"批次結果：{result.result.type}"}
-        log(f"  anthropic: 批次完成，"
-            f"{sum(1 for r in results.values() if 'error' not in r)}/{len(pages)} 成功")
+                results[pid] = {"error": tr("批次結果：{0}", result.result.type)}
+        log(tr("  anth"
+            "ropic: 批次完成，{0}/{1} 成功", sum(1 for r in results.values() if 'error' not in r), len(pages)))
         return results
 
 

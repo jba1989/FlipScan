@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from .ffmpeg import probe_video
 from .workspace import STAGES, Workspace
+from .i18n import tr
 
 STAGE_MODULES = {
     "extract": "flipscan.stages.extract",
@@ -162,7 +163,7 @@ def add_page_from_photo(ws: Workspace, cfg: dict, image: Path,
     from .stages.preprocess import preprocess_page
     from .stages.transcribe import run as transcribe_run
 
-    log(f"{page_id}：正在預處理照片（位置 {idx} 的 {role or 'page'}）")
+    log(tr("{0}：正在預處理照片（位置 {1} 的 {2}）", page_id, idx, role or 'page'))
     preprocess_page(ws, page, cfg)
     ws.save()
     if role == "cover":
@@ -192,9 +193,9 @@ def retry_ocr_page(ws: Workspace, page_id: str) -> None:
 
     page = ws.page(page_id)
     if page is None:
-        raise LookupError("無此頁面")
+        raise LookupError(tr("無此頁面"))
     if not page.get("llm_image"):
-        raise RuntimeError("頁面尚未有處理過的圖片 — 請先執行處理流程")
+        raise RuntimeError(tr("頁面尚未有處理過的圖片 — 請先執行處理流程"))
     cfg = load_config(ws.root)
     if cfg["provider"]["name"] == "hybrid":  # one page: local is plenty
         cfg = {**cfg, "provider": {**cfg["provider"], "name": "ollama"}}
@@ -220,7 +221,7 @@ def retry_ocr_page(ws: Workspace, page_id: str) -> None:
     _cache_page(ws, page)
     if "error" in r:
         ws.save()
-        raise RuntimeError(f"再次失敗：{r['error']}")
+        raise RuntimeError(tr("再次失敗：{0}", r['error']))
     reconcile(ws, ws.manifest["pages"], log=lambda m: None)
     ws.stage_reset("figures")   # figures/assemble/build are downstream
     ws.save()
@@ -244,7 +245,7 @@ def set_video_rotation(ws: Workspace, vid: str, rotate: int,
             for key in ("confidence", "flags", "transcribe_error", "printed_number"):
                 p.pop(key, None)
     ws.save()
-    log(f"{vid}：方向已設定為 {rotate} 度")
+    log(tr("{0}：方向已設定為 {1} 度", vid, rotate))
 
 
 def add_pages_from_pdf(ws: Workspace, cfg: dict, pdf: Path,
@@ -291,12 +292,12 @@ def add_pages_from_pdf(ws: Workspace, cfg: dict, pdf: Path,
             preprocess_page(ws, page, cfg)
             if (i + 1) % 20 == 0:
                 ws.save()
-                log(f"  已算繪 {i + 1}/{n} 個 PDF 頁面")
+                log(tr("  已算繪 {0}/{1} 個 PDF 頁面", i + 1, n))
     finally:
         doc.close()   # release the file handle (Windows can't unlink it open)
     ws.stage_reset("transcribe")
     ws.save()
-    log(f"已從 {pdf.name} 匯入 {n} 個頁面 — 請執行處理流程以進行辨識")
+    log(tr("已從 {0} 匯入 {1} 個頁面 — 請執行處理流程以進行辨識", pdf.name, n))
     return n
 
 
@@ -364,7 +365,7 @@ def add_pages_from_epub(ws: Workspace, cfg: dict, epub_path: Path,
                       "source": "epub", "md": None,
                       "role": "cover", "pinned": "start"})
         n_imported += 1
-        log("  封面圖片已匯入")
+        log(tr("  封面圖片已匯入"))
 
     # ---- one page per spine document, in reading order
     spine_ids = [sid for sid, _ in book.spine]
@@ -442,8 +443,8 @@ def add_pages_from_epub(ws: Workspace, cfg: dict, epub_path: Path,
         ws.stage_done(s)
     ws.stage_reset("assemble")
     ws.save()
-    log(f"已從 {epub_path.name} 匯入 {n_imported} 個章節/項目 — "
-        f"已可進行編輯、重新匯出或朗讀")
+    log(tr("已從 {0} 匯入 {1} 個章節/項目 — 已可進行"
+        "編輯、重新匯出或朗讀", epub_path.name, n_imported))
     return n_imported
 
 
@@ -461,14 +462,14 @@ def crop_page_photo(ws: Workspace, cfg: dict, page: dict,
 
     src = ws.root / (page.get("patched_source") or "")
     if not src.exists():
-        raise FileNotFoundError(f"{page['id']} 沒有可裁切的相片來源")
+        raise FileNotFoundError(tr("{0} 沒有可裁切的相片來源", page['id']))
     img = cv2.imread(str(src))
     if img is None:
-        raise ValueError(f"{page['id']}：照片無法讀取")
+        raise ValueError(tr("{0}：照片無法讀取", page['id']))
     quad = order_quad(np.clip(np.array(quad_norm, dtype=np.float64), 0, 1))
     crop = correct_page(img, quad)
     if crop.shape[0] < 50 or crop.shape[1] < 50:
-        raise ValueError("裁切範圍太小")
+        raise ValueError(tr("裁切範圍太小"))
     cv2.imwrite(str(src), crop)
     # old regions/figures/transcription described the uncropped image
     for key in ("regions", "figures"):
@@ -481,7 +482,7 @@ def crop_page_photo(ws: Workspace, cfg: dict, page: dict,
     preprocess_page(ws, page, cfg)
     ws.stage_reset("assemble")
     ws.save()
-    log(f"{page['id']}：頁面照片已裁切")
+    log(tr("{0}：頁面照片已裁切", page['id']))
 
 
 def rotate_patch(ws: Workspace, cfg: dict, page: dict, degrees: int = 180,
@@ -493,14 +494,14 @@ def rotate_patch(ws: Workspace, cfg: dict, page: dict, degrees: int = 180,
 
     src = ws.root / (page.get("patched_source") or "")
     if not src.exists():
-        raise FileNotFoundError(f"{page['id']} 沒有補拍照片")
+        raise FileNotFoundError(tr("{0} 沒有補拍照片", page['id']))
     img = cv2.imread(str(src))
     if img is None:
-        raise ValueError(f"{page['id']}：補拍照片無法讀取")
+        raise ValueError(tr("{0}：補拍照片無法讀取", page['id']))
     rot = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
            270: cv2.ROTATE_90_COUNTERCLOCKWISE}.get(degrees % 360)
     if rot is None:
-        raise ValueError(f"不支援的旋轉角度 {degrees}")
+        raise ValueError(tr("不支援的旋轉角度 {0}", degrees))
     cv2.imwrite(str(src), cv2.rotate(img, rot))
     page["md"] = None
     for key in ("confidence", "flags", "transcribe_error", "regions", "figures"):
@@ -509,7 +510,7 @@ def rotate_patch(ws: Workspace, cfg: dict, page: dict, degrees: int = 180,
     preprocess_page(ws, page, cfg)
     ws.stage_reset("transcribe")
     ws.save()
-    log(f"{page['id']}：已旋轉 {degrees}° — 下次執行時重新辨識")
+    log(tr("{0}：已旋轉 {1}° — 下次執行時重新辨識", page['id'], degrees))
 
 
 def fix_photo_orientation(ws: Workspace, cfg: dict, page: dict,
@@ -563,10 +564,10 @@ def run_pipeline(ws: Workspace, cfg: dict, only_stage: str | None = None,
         try:
             mod = importlib.import_module(STAGE_MODULES[stage])
         except ModuleNotFoundError:
-            log(f"[{stage}] 尚未實作，跳過")
+            log(tr("[{0}] 尚未實作，跳過", stage))
             continue
         if not only_stage and not force and ws.stage_status(stage) == "done":
-            log(f"[{stage}] 已完成，跳過")
+            log(tr("[{0}] 已完成，跳過", stage))
             continue
         log(f"[{stage}] running")
         mod.run(ws, cfg, log=log)

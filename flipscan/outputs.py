@@ -16,6 +16,7 @@ import re
 import time
 
 from .workspace import Workspace
+from .i18n import tr
 
 
 def _sha(data: str) -> str:
@@ -129,18 +130,18 @@ def output_status(ws: Workspace) -> list[dict]:
             at = stored.get("at")
             if stale:
                 old = stored.get("parts") or {}
-                reasons = [_REASON[k] for k in _REASON
+                reasons = [tr(_REASON[k]) for k in _REASON
                            if old.get(k) != parts[k]]
                 if not reasons:
-                    reasons = ["書籍狀態已變更"]
+                    reasons = [tr("書籍狀態已變更")]
         elif isinstance(stored, str):     # stamped before per-component tracking
             stale = stored != sig
             if stale:
-                reasons = ["由較舊的書籍文字建置（於變更追蹤之前 "
-                           "— 重新建置一次，之後的標籤將準確顯示 "
-                           "變更項目）"]
+                reasons = [tr("由較舊的書籍文字建置（於變更追蹤之前"
+                           " — 重新建置一次，之後的標籤將準確顯"
+                           "示 變更項目）")]
         else:                             # never stamped at all
-            reasons = ["無建置紀錄 — 重新建置一次以開始追蹤"]
+            reasons = [tr("無建置紀錄 — 重新建置一次以開始追蹤")]
         rows.append({"name": f.name, "stale": stale, "reasons": reasons,
                      "built_at": at})
     return rows

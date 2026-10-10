@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>FlipScan 閱讀器</title>
+<script src="/static/i18n.en.js"></script>
+<script src="/static/i18n.js"></script>
 <style>
   * { box-sizing: border-box; }
   /* dvh tracks the browser chrome (URL bar) on phones — 100vh flows under it */
@@ -79,12 +81,13 @@
 <script src="/static/vendor/jszip.min.js"></script>
 <script src="/static/vendor/epub.min.js"></script>
 <script>
+I18N.translateStatic();
 const params = new URLSearchParams(location.search);
 const project = params.get("project"), file = params.get("file");
 document.getElementById("back").href =
   "/#" + encodeURIComponent(project || "") + "/pipeline";
 if (!project || !file) {
-  document.getElementById("loading").textContent = "缺少 ?project= 與 ?file=";
+  document.getElementById("loading").textContent = t("缺少 ?project= 與 ?file=");
   throw new Error("bad params");
 }
 document.getElementById("title").textContent = file;
@@ -177,7 +180,7 @@ book.loaded.metadata.then(m => {
 });
 book.loaded.navigation.then(nav => {
   const sel = document.getElementById("toc");
-  sel.innerHTML = '<option value="">目錄…</option>' + nav.toc.map(i =>
+  sel.innerHTML = t('<option value="">目錄…</option>') + nav.toc.map(i =>
     `<option value="${i.href}">${i.label.trim()}</option>`).join("");
   sel.onchange = () => sel.value && rendition.display(sel.value);
 });
@@ -193,7 +196,7 @@ function updatePos(loc) {
   const pct = book.locations.length()
     ? Math.round(book.locations.percentageFromCfi(loc.start.cfi) * 100) : null;
   document.getElementById("pos").textContent =
-    (pct == null ? "" : pct + "% — ") + "點擊 ‹ › 或頁面邊緣以翻頁";
+    (pct == null ? "" : pct + "% — ") + t("點擊 ‹ › 或頁面邊緣以翻頁");
   const sel = document.getElementById("toc");
   if (loc.start.href && sel.options.length) {
     for (const o of sel.options)
@@ -271,7 +274,7 @@ rendition.hooks.content.register(contents => {
       b.addEventListener("click", (e) => { e.preventDefault(); fn(b); });
       bar.appendChild(b);
     };
-    mkBtn("✂ 重新裁切", () => {
+    mkBtn(t("✂ 重新裁切"), () => {
       // hand off to the main app's crop tool on this figure — navigate this
       // tab (window.open gets eaten by mobile popup blockers); the reader
       // remembers its position so coming back is free
@@ -279,14 +282,14 @@ rendition.hooks.content.register(contents => {
         JSON.stringify({project, pageId: pid, figIdx: idx}));
       window.top.location.assign("/#" + encodeURIComponent(project) + "/pages");
     });
-    mkBtn("📷 補拍", async (b) => {
+    mkBtn(t("📷 補拍"), async (b) => {
       try {
         const r = await fetch(`/api/projects/${encodeURIComponent(project)}` +
           `/pages/${pid}/figures/${idx}/reshoot`, {method: "POST"});
         if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-        b.textContent = "✓ 已加入補拍佇列";
+        b.textContent = t("✓ 已加入補拍佇列");
         b.disabled = true;
-      } catch (e) { alert("失敗：" + e.message); }
+      } catch (e) { alert(t("失敗：") + e.message); }
     });
     img.insertAdjacentElement("afterend", bar);
   });
@@ -307,10 +310,10 @@ function currentSnippet() {
 document.getElementById("flag").onclick = async () => {
   const snippet = currentSnippet();
   if (snippet.trim().length < 12) {
-    alert("無法讀取目前段落 — 請翻到文字頁面後再試一次。");
+    alert(t("無法讀取目前段落 — 請翻到文字頁面後再試一次。"));
     return;
   }
-  const note = prompt("標記此處 — 有什麼問題？（選填備註）");
+  const note = prompt(t("標記此處 — 有什麼問題？（選填備註）"));
   if (note === null) return;
   try {
     const r = await fetch(`/api/projects/${encodeURIComponent(project)}/reader-flag`, {
@@ -318,9 +321,9 @@ document.getElementById("flag").onclick = async () => {
       body: JSON.stringify({snippet, note: note || null})});
     const d = await r.json();
     if (!r.ok) throw new Error(d.detail || r.statusText);
-    alert(`已標記 ${d.printed_number != null ? "第 " + d.printed_number + " 頁" : d.page}` +
-          " — 已加入重拍清單與補拍精靈。");
-  } catch (e) { alert("標記失敗：" + e.message); }
+    alert(T`已標記 ${d.printed_number != null ? t("第 ") + d.printed_number + t(" 頁") : d.page}` +
+          t(" — 已加入重拍清單與補拍精靈。"));
+  } catch (e) { alert(t("標記失敗：") + e.message); }
 };
 
 document.getElementById("pg-prev").onclick = () => rendition.prev();

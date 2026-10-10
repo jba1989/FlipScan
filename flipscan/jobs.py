@@ -23,6 +23,7 @@ import traceback
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from .i18n import tr
 
 # terminal states a job can end in
 DONE, ERROR, CANCELED = "done", "error", "canceled"
@@ -227,7 +228,7 @@ class JobQueue:
         c = self._conn()
         orphans = c.execute("SELECT id FROM jobs WHERE status='running'").fetchall()
         for r in orphans:
-            self._log(r["id"], "[queue] 伺服器重新啟動後繼續執行")
+            self._log(r["id"], tr("[queue] 伺服器重新啟動後繼續執行"))
             c.execute("UPDATE jobs SET status='queued', started_at=NULL, "
                       "cancel=0 WHERE id=?", (r["id"],))
         return len(orphans)
@@ -297,7 +298,7 @@ class JobQueue:
             log = lambda line, _j=jid: self._log(_j, str(line))
             should_cancel = lambda _j=jid: self._canceled(_j)
             if handler is None:
-                self._finish(jid, ERROR, f"沒有針對類型 {job['kind']!r} 的處理常式")
+                self._finish(jid, ERROR, tr("沒有針對類型 {0!r} 的處理常式", job['kind']))
                 continue
             try:
                 params = json.loads(job["params"] or "{}")
@@ -310,9 +311,9 @@ class JobQueue:
                 self._finish(jid, CANCELED if should_cancel() else DONE,
                              result=ret)
             except JobCanceled:
-                self._log(jid, "[queue] 已取消")
+                self._log(jid, tr("[queue] 已取消"))
                 self._finish(jid, CANCELED)
             except Exception as e:                       # noqa: BLE001
-                self._log(jid, f"[queue] 錯誤: {e}")
+                self._log(jid, tr("[queue] 錯誤: {0}", e))
                 self._log(jid, traceback.format_exc())
                 self._finish(jid, ERROR, str(e))

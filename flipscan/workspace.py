@@ -20,6 +20,7 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from .i18n import tr
 
 MANIFEST_VERSION = 1
 
@@ -62,7 +63,7 @@ class Workspace:
         ws = cls(root)
         ws.root.mkdir(parents=True, exist_ok=True)
         if ws.manifest_path.exists():
-            raise FileExistsError(f"{ws.manifest_path} 已存在；工作區已初始化")
+            raise FileExistsError(tr("{0} 已存在；工作區已初始化", ws.manifest_path))
         for d in SUBDIRS:
             (ws.root / d).mkdir(exist_ok=True)
         book_meta = {"title": title, "expected_pages": expected_pages}
@@ -84,7 +85,7 @@ class Workspace:
         ws = cls(root)
         if not ws.manifest_path.exists():
             raise FileNotFoundError(
-                f"{ws.root} 中沒有 manifest.json — 請先執行 `flipscan init`"
+                tr("{0} 中沒有 manifest.json — 請先執行 `flipscan init`", ws.root)
             )
         return ws
 

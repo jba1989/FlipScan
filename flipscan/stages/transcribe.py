@@ -9,6 +9,7 @@ import re
 from ..backends import get_backend, needs_escalation
 from ..textproc import reflow_wrapped
 from ..workspace import Workspace
+from ..i18n import tr
 
 # transcription results cached by capture identity, so re-clustering (e.g. after
 # adding another video) only re-transcribes pages whose best frame changed
@@ -185,8 +186,8 @@ def dedupe_by_printed(pages: list[dict], log=print, mtime_of=None) -> int:
             p["status"] = "duplicate"
             deduped += 1
     if deduped:
-        log(f"  已合併 {deduped} 個重複拍攝畫面（相同的印刷頁碼；"
-            f"保留最佳拍攝畫面）")
+        log(tr("  已合併 {0} 個重複拍攝畫面（相同的印刷頁碼；"
+            "保留最佳拍攝畫面）", deduped))
     return deduped
 
 
@@ -218,8 +219,8 @@ def dedupe_by_content(pages: list[dict], get_text, log=print,
         loser["content_duplicate"] = True
         deduped += 1
     if deduped:
-        log(f"  已合併 {deduped} 對幾乎相同的頁面（內容相同，"
-            f"其中一份無頁碼）")
+        log(tr("  已合併 {0} 對幾乎相同的頁面（內容相同，"
+            "其中一份無頁碼）", deduped))
     return deduped
 
 
@@ -293,9 +294,9 @@ def sanitize_numbers_by_video(pages: list[dict], log=print) -> int:
             # the anchor itself is the outlier — keep it on its own page only
             unweighted = pick([1] * n)
             if len(unweighted) > len(keep) + 3:
-                log("  警告：手動設定的頁碼與其影片的 "
-                    "拍攝順序衝突 — 保留該設定，但不會讓它剔除 "
-                    "其他頁面")
+                log(tr("  警告：手動設定的頁碼與其影片的 "
+                    "拍攝順序衝突 — 保留該設定，但不會讓它剔除"
+                    " 其他頁面"))
                 keep = unweighted | {i for i in range(n)
                                      if group[i].get("number_manual")}
         for i, p in enumerate(group):
@@ -305,8 +306,8 @@ def sanitize_numbers_by_video(pages: list[dict], log=print) -> int:
                 p.pop("number_inferred", None)
                 rejected += 1
     if rejected:
-        log(f"  已剔除 {rejected} 個破壞該影片頁面順序的印刷頁碼 "
-            f"（誤讀）— 正從相鄰頁面重新推算")
+        log(tr("  已剔除 {0} 個破壞該影片頁面順序的印刷頁碼 （"
+            "誤讀）— 正從相鄰頁面重新推算", rejected))
     return rejected
 
 
@@ -357,7 +358,7 @@ def infer_from_video_order(pages: list[dict], log=print) -> int:
                     p.pop("number_rejected", None)
                     inferred += 1
     if inferred:
-        log(f"  已從影片拍攝順序推算 {inferred} 個頁碼")
+        log(tr("  已從影片拍攝順序推算 {0} 個頁碼", inferred))
     return inferred
 
 
@@ -395,8 +396,8 @@ def infer_missing_numbers(pages: list[dict], log=print) -> int:
                     p["status"] = "suspect"
                 p["number_conflict"] = True
     if inferred:
-        log(f"  已從相鄰頁面為 {inferred} 個無頁碼的頁面 "
-            f"推算印刷頁碼")
+        log(tr("  已從相鄰頁面為 {0} 個無頁碼的頁面 "
+            "推算印刷頁碼", inferred))
     return inferred
 
 
@@ -438,8 +439,8 @@ def check_printed_numbers(pages: list[dict]) -> list[str]:
             continue
         if prev_num is not None and n <= prev_num:
             warnings.append(
-                f"印刷頁碼不具單調性：{prev_id} 為 {prev_num}，"
-                f"但隨後的 {p['id']} 為 {n} — 可能是遺漏/重複頁面或合併錯誤"
+                tr("印刷頁碼不具單調性：{0} 為 {1}，但隨後的"
+                " {2} 為 {3} — 可能是遺漏/重複頁面或合併錯誤", prev_id, prev_num, p['id'], n)
             )
             p["status"] = "suspect"
         prev_num, prev_id = n, p["id"]
@@ -484,7 +485,7 @@ def _run_incremental(ws: Workspace, backend, todo, by_id, log) -> dict[str, dict
         try:
             record(item, r, i)
         except Exception as e:  # bookkeeping hiccup must not sink a long run
-            log(f"  警告：無法記錄 {item[0]}：{e}")
+            log(tr("  警告：無法記錄 {0}：{1}", item[0], e))
 
     if workers > 1:
         from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -558,8 +559,8 @@ def reconcile(ws: Workspace, pages: list[dict], log=print) -> list[dict]:
         ws.manifest["pages"] = pages          # import order = book order
         ws.manifest["missing_pages"] = []     # repeating numbers -> no gap list
         ws.save()
-        log("  PDF/EPUB 書籍：保留權威頁面順序（印刷頁碼 "
-            "可能會在串接的作品中重複）")
+        log(tr("  PDF/EPUB 書籍：保留權威頁面順序（印刷頁碼"
+            " 可能會在串接的作品中重複）"))
         return pages
 
     sanitize_numbers_by_video(pages, log)
@@ -582,7 +583,7 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
             and p.get("status") != "deleted"]
     by_id = {p["id"]: p for p in pages}
     if not todo:
-        log("  所有頁面皆已完成辨識")
+        log(tr("  所有頁面皆已完成辨識"))
     else:
         provider = cfg["provider"]["name"]
         if provider == "hybrid":
@@ -594,11 +595,11 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
             target = cfg["provider"].get("escalate_to", "anthropic")
             from ..backends import anthropic_enabled
             if escalate and target == "anthropic" and not anthropic_enabled(cfg):
-                log(f"  hybrid: {len(escalate)} 個頁面原應升級辨識，但 "
-                    f"設定中已停用 Anthropic API — 保留本地結果")
+                log(tr("  hybrid: {0} 個頁面原應升級辨識，但 設定中已停"
+                    "用 Anthropic API — 保留本地結果", len(escalate)))
                 escalate = []
             if escalate:
-                log(f"  hybrid: 正在將 {len(escalate)} 個頁面升級至 {target} 辨識")
+                log(tr("  hybrid: 正在將 {0} 個頁面升級至 {1} 辨識", len(escalate), target))
                 remote = get_backend(
                     {**cfg, "provider": {**cfg["provider"], "name": target}})
                 for pid, r in remote.transcribe(
@@ -629,7 +630,7 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
                       if p.get("transcribe_error") and p.get("llm_image")
                       and p.get("status") != "deleted"]
             if failed:
-                log(f"  正在透過分割修復重試 {len(failed)} 個失敗頁面…")
+                log(tr("  正在透過分割修復重試 {0} 個失敗頁面…", len(failed)))
                 rb = get_backend(
                     {**cfg, "provider": {**cfg["provider"], "name": retry_name}})
                 for pid, r in rb.transcribe(failed, log).items():
@@ -644,13 +645,13 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
 
     warnings = check_printed_numbers(pages)
     if missing:
-        warnings.append(f"未曾拍攝到的印刷頁面：{format_ranges(missing)} "
-                        f"— 請拍攝這些頁面（任何方向皆可）並點選「新增影片」，或 "
-                        f"新增照片")
+        warnings.append(tr("未曾拍攝到的印刷頁面：{0} — 請拍攝這些頁面"
+                        "（任何方向皆可）並點選「新增影片」，或 "
+                        "新增照片", format_ranges(missing)))
     for w in warnings:
         log(f"  WARNING: {w}")
     failed = [p["id"] for p in pages if p.get("transcribe_error")]
     if failed:
-        log(f"  {len(failed)} 個頁面辨識失敗：{', '.join(failed)}")
+        log(tr("  {0} 個頁面辨識失敗：{1}", len(failed), ', '.join(failed)))
     ws.manifest.pop("isbn_detected", None)   # re-scan for an ISBN next detail view
     ws.stage_done("transcribe", warnings=warnings, failed=failed)

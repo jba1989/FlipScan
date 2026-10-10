@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Callable
 
 from . import TranscriptionBackend
+from ..i18n import tr
 
 
 class MockBackend(TranscriptionBackend):
@@ -35,5 +36,5 @@ class MockBackend(TranscriptionBackend):
                 "regions": [],
                 "flags": [],
             }
-        log(f"  mock: 已辨識 {len(pages)} 個頁面（佔位文字）")
+        log(tr("  mock: 已辨識 {0} 個頁面（佔位文字）", len(pages)))
         return results

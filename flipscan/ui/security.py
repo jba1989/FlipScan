@@ -17,6 +17,7 @@ from urllib.parse import urlencode, urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from ..i18n import tr
 
 TOKEN_FILE = ".ui_token"
 COOKIE = "flipscan_token"
@@ -98,10 +99,10 @@ def _matches(candidate: str | None, token: str) -> bool:
 
 def _denied(request: Request):
     if request.url.path.startswith("/api/"):
-        return JSONResponse({"detail": "需要 FlipScan 存取權杖"}, 401)
+        return JSONResponse({"detail": tr("需要 FlipScan 存取權杖")}, 401)
     return PlainTextResponse(
-        "FlipScan：需要存取權杖。\n\n請開啟帶有 ?token=... 的連結，該連結已由 "
-        "`flipscan ui` 顯示於終端機中（或讀取 <projects root>/.ui_token）。",
+        tr("FlipScan：需要存取權杖。\n\n請開啟帶有 ?token=... 的連結，該連結已由 `"
+        "flipscan ui` 顯示於終端機中（或讀取 <projects root>/.ui_token）。"),
         401)
 
 

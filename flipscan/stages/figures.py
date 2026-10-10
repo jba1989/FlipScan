@@ -17,6 +17,7 @@ import numpy as np
 
 from ..imaging import figure_block_bbox, order_quad, sharpness
 from ..workspace import Workspace
+from ..i18n import tr
 
 EXPAND = 0.075          # grow the LLM bbox by 7.5% per side before snapping
 SNAP_MARGIN = 8         # px kept around detected content
@@ -124,7 +125,7 @@ def write_figure(path, crop: np.ndarray, cfg: dict) -> None:
         out = enhance_figure(crop, scale)
         ok, buf = cv2.imencode(".png", out, params)
         if not ok:
-            raise RuntimeError(f"{path} 的 PNG 編碼失敗")
+            raise RuntimeError(tr("{0} 的 PNG 編碼失敗", path))
         if len(buf) <= budget or min(out.shape[:2]) < 200:
             break
         scale *= 0.85
@@ -249,4 +250,4 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
         page["figures"] = page_figs
     ws.save()
     ws.stage_done("figures", figure_count=total)
-    log(f"  已裁切 {total} 個圖表 -> figures/")
+    log(tr("  已裁切 {0} 個圖表 -> figures/", total))

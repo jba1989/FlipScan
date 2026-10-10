@@ -6,6 +6,7 @@ import os
 import tomllib
 from pathlib import Path
 from typing import Any
+from .i18n import tr
 
 DEFAULTS: dict[str, Any] = {
     "provider": {
@@ -147,7 +148,7 @@ def save_global_config(sections: dict[str, dict[str, Any]]) -> Path:
     """Persist settings to the global config file (whole-file rewrite)."""
     path = global_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    lines = ["# FlipScan 全域設定（由 GUI 設定面板編輯）"]
+    lines = [tr("# FlipScan 全域設定（由 GUI 設定面板編輯）")]
     for section, values in sections.items():
         vals = {k: v for k, v in values.items() if v not in (None, "")}
         if not vals:
