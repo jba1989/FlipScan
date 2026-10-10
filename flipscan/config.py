@@ -61,6 +61,13 @@ DEFAULTS: dict[str, Any] = {
     "transcribe": {
         "max_retries": 1,
     },
+    "figures": {
+        # clean auto-cropped figures up for reading: white paper, no color
+        # cast, Lanczos upscale (video frames cap the real resolution)
+        "enhance": True,
+        "upscale": 2.0,
+        "max_kb": 1000,  # per-figure file cap: the upscale steps down to fit
+    },
     "audiobook": {
         "engine": "chatterbox",   # local TTS with zero-shot voice cloning
         # the narrator used by default: a voice NAME from the shared library

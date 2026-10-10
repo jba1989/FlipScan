@@ -1334,6 +1334,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
             raise HTTPException(400, "the Anthropic API is disabled in settings "
                                      "— enable it to run AI refine")
         from ..backends.anthropic_backend import claude_figure_boxes
+        from ..stages.figures import write_figure
 
         def iou(a, b):
             x0, y0 = max(a[0], b[0]), max(a[1], b[1])
@@ -1456,8 +1457,8 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                         failed += 1
                         continue
                     rel = f"figures/{page['id']}_{chr(97 + ri % 26)}.png"
-                    cv2.imwrite(str(ws.root / rel),
-                                color[px[1]:px[3], px[0]:px[2]])
+                    write_figure(ws.root / rel,
+                                 color[px[1]:px[3], px[0]:px[2]], cfg)
                     region["bbox_norm"] = [float(v) for v in box]
                     region["auto_refined"] = True
                     region["ai_crop"] = True
@@ -1483,8 +1484,10 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
         import cv2
 
         from ..imaging import refine_figure_bbox
+        from ..stages.figures import write_figure
 
         ws = ws_for(name)
+        cfg = load_config(ws.root)
         refined = 0
         for page in ws.manifest["pages"]:
             if page.get("status") in ("duplicate", "deleted") or not page.get("color"):
@@ -1506,7 +1509,7 @@ def create_app(root: Path, token: str | None = None) -> FastAPI:
                 if px[2] - px[0] < 20 or px[3] - px[1] < 20:
                     continue
                 rel = f"figures/{page['id']}_{chr(97 + ri % 26)}.png"
-                cv2.imwrite(str(ws.root / rel), color[px[1]:px[3], px[0]:px[2]])
+                write_figure(ws.root / rel, color[px[1]:px[3], px[0]:px[2]], cfg)
                 region["bbox_norm"] = box
                 region["auto_refined"] = True
                 if rel not in (page.get("figures") or []):

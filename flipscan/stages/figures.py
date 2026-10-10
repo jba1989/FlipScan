@@ -1,19 +1,21 @@
 """Stage 8: figures — crop LLM-reported regions from the corrected color frames.
 
-The LLM bbox is approximate: expand it, then snap to actual content using
-background-deviation analysis on the full-res corrected frame. Cropped images
-are inserted at their [[region-N]] placeholders in the page markdown.
+The LLM bbox is approximate: find the figure block it points at (or, failing
+that, expand it and snap to content) on the full-res corrected frame, then
+clean the crop up for reading. Cropped images are inserted at their
+[[region-N]] placeholders in the page markdown.
 """
 
 from __future__ import annotations
 
 import re
 import string
+from pathlib import Path
 
 import cv2
 import numpy as np
 
-from ..imaging import order_quad, sharpness
+from ..imaging import figure_block_bbox, order_quad, sharpness
 from ..workspace import Workspace
 
 EXPAND = 0.075          # grow the LLM bbox by 7.5% per side before snapping
@@ -73,6 +75,85 @@ def snap_bbox(gray: np.ndarray, x0: int, y0: int, x1: int, y1: int) -> tuple[int
     )
 
 
+def enhance_figure(crop: np.ndarray, upscale: float = 2.0,
+                   max_long_edge: int = 2400) -> np.ndarray:
+    """Make a video-frame crop read like a scan: per-channel levels (the paper
+    goes white, the grey/blue cast of room light goes away, colored fills
+    keep their hue), a Lanczos upscale, and an unsharp mask on lightness
+    only so red/green candles don't get color fringes.
+
+    The white point comes from the crop's border, which is paper for a
+    figure set on a page; a full-bleed dark photo has no paper there, so its
+    levels are left alone rather than blown out."""
+    border = np.concatenate([crop[:3].reshape(-1, 3), crop[-3:].reshape(-1, 3),
+                             crop[:, :3].reshape(-1, 3), crop[:, -3:].reshape(-1, 3)])
+    out = crop
+    if float(np.median(border)) > 150:
+        lo = np.minimum(np.percentile(crop.reshape(-1, 3), 1, axis=0), 60.0)
+        hi = np.percentile(border, 90, axis=0)
+        span = np.maximum(hi - lo, 40.0)      # flat crops: don't blow up noise
+        out = np.clip((crop.astype(np.float32) - lo) * (255.0 / span), 0, 255)
+        out = out.astype(np.uint8)
+    h, w = out.shape[:2]
+    scale = min(upscale, max_long_edge / max(h, w))
+    if scale != 1.0:
+        out = cv2.resize(out, (round(w * scale), round(h * scale)),
+                         interpolation=cv2.INTER_LANCZOS4 if scale > 1 else cv2.INTER_AREA)
+    lab = cv2.cvtColor(out, cv2.COLOR_BGR2LAB)
+    lum = lab[:, :, 0]
+    blur = cv2.GaussianBlur(lum, (0, 0), 1.2 * max(scale, 1.0))
+    lab[:, :, 0] = cv2.addWeighted(lum, 1.6, blur, -0.6, 0)
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+
+def write_figure(path, crop: np.ndarray, cfg: dict) -> None:
+    """Write the figure file for an automatic crop, per [figures] config.
+
+    PNG keeps the faint gridlines and small print that lossy formats and
+    denoising smear; the upscale is what costs bytes, so when the file would
+    exceed max_kb the scale steps down (to none, then below 1x for a huge
+    crop) until it fits."""
+    fcfg = cfg.get("figures", {})
+    params = [cv2.IMWRITE_PNG_COMPRESSION, 9]
+    budget = int(fcfg.get("max_kb", 1000)) * 1024
+    if not fcfg.get("enhance", True):
+        cv2.imwrite(str(path), crop, params)
+        return
+    scale = float(fcfg.get("upscale", 2.0))
+    while True:
+        out = enhance_figure(crop, scale)
+        ok, buf = cv2.imencode(".png", out, params)
+        if not ok:
+            raise RuntimeError(f"PNG encode failed for {path}")
+        if len(buf) <= budget or min(out.shape[:2]) < 200:
+            break
+        scale *= 0.85
+    Path(path).write_bytes(buf.tobytes())
+
+
+def is_whole_page(box: tuple[int, int, int, int], w: int, h: int) -> bool:
+    """A "figure" covering basically the whole page is a model miss (a
+    chapter-title page, a full-page tint), not something to crop out."""
+    bw, bh = (box[2] - box[0]) / w, (box[3] - box[1]) / h
+    return bw * bh > 0.85 or (bw > 0.93 and bh > 0.93)
+
+
+def auto_crop_box(color: np.ndarray, gray: np.ndarray,
+                  bbox_norm: list[float]) -> tuple[int, int, int, int]:
+    """Pixel box for a model-reported region: the figure block it points at,
+    else the old expand-and-snap around the model's box."""
+    h, w = gray.shape
+    block = figure_block_bbox(color, bbox_norm)
+    if block is not None:
+        x0, y0, x1, y1 = block
+        return (max(0, x0 - SNAP_MARGIN), max(0, y0 - SNAP_MARGIN),
+                min(w, x1 + SNAP_MARGIN), min(h, y1 + SNAP_MARGIN))
+    bx0, by0, bx1, by1 = bbox_norm
+    dx, dy = (bx1 - bx0) * EXPAND, (by1 - by0) * EXPAND
+    return snap_bbox(gray, int(max(0.0, bx0 - dx) * w), int(max(0.0, by0 - dy) * h),
+                     int(min(1.0, bx1 + dx) * w), int(min(1.0, by1 + dy) * h))
+
+
 def run(ws: Workspace, cfg: dict, log=print) -> None:
     fig_dir = ws.dir("figures")
     total = 0
@@ -130,20 +211,15 @@ def run(ws: Workspace, cfg: dict, log=print) -> None:
                 elif rel not in md:
                     md = md.rstrip() + f"\n\n{img_md}\n"
                 continue
-            bx0, by0, bx1, by1 = region["bbox_norm"]
-            dx, dy = (bx1 - bx0) * EXPAND, (by1 - by0) * EXPAND
-            x0 = int(max(0.0, bx0 - dx) * w)
-            y0 = int(max(0.0, by0 - dy) * h)
-            x1 = int(min(1.0, bx1 + dx) * w)
-            y1 = int(min(1.0, by1 + dy) * h)
-            x0, y0, x1, y1 = snap_bbox(gray, x0, y0, x1, y1)
-            if x1 - x0 < 20 or y1 - y0 < 20:
+            x0, y0, x1, y1 = auto_crop_box(color, gray, region["bbox_norm"])
+            if x1 - x0 < 20 or y1 - y0 < 20 or is_whole_page((x0, y0, x1, y1), w, h):
                 continue
             crop = color[y0:y1, x0:x1]
-            cv2.imwrite(str(fig_dir / name), crop)
+            write_figure(fig_dir / name, crop, cfg)
             page_figs.append(rel)
             total += 1
 
+            # judged on the raw crop: sharpening would pass every blurry one
             if sharpness(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)) < MIN_FIGURE_SHARPNESS:
                 page["figure_quality"] = True
                 if page["status"] == "ok":

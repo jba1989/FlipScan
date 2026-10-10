@@ -184,7 +184,7 @@ Every stage is idempotent and resumable; state lives in the workspace's `manifes
 | select | best composite-scored frame per page + contact sheet | `work/contact_sheet.jpg` |
 | preprocess | edge-detect page crop, perspective correction, optional dewarp, contrast-normalized LLM copy | `work/pages/` |
 | transcribe | vision LLM → strict JSON (markdown, printed number, figure regions, flags); printed-number reconciliation | `pages/*.md` |
-| figures | detect/snap figure bboxes, crop from color frames, insert into markdown | `figures/` |
+| figures | find the figure block the model's bbox points at, crop + enhance from color frames, insert into markdown | `figures/` |
 | assemble | concatenate pages, heal hyphenation, strip running headers, chapter structure from the printed contents page, gap notices | `work/book.md` |
 | build | EPUB / PDF / Markdown / audiobook (m4b) outputs | `out/` |
 
@@ -216,6 +216,11 @@ split_spreads = false            # split a flat open two-page spread at the fold
 
 [transcribe]
 max_retries = 1
+
+[figures]
+enhance = true                   # auto crops: white paper, no color cast, sharpen
+upscale = 2.0                    # Lanczos upscale of auto crops (long edge <= 2400)
+max_kb = 1000                    # per-figure PNG size cap; the upscale steps down to fit
 ```
 
 Environment overrides: `FLIPSCAN_PROVIDER`, `FLIPSCAN_OLLAMA_URL`, `FLIPSCAN_OLLAMA_MODEL`, `FLIPSCAN_ANTHROPIC_MODEL`, `FLIPSCAN_ANTHROPIC_API_KEY` (falls back to `ANTHROPIC_API_KEY`), `FLIPSCAN_OPENAI_BASE_URL`/`FLIPSCAN_OPENAI_MODEL`/`FLIPSCAN_OPENAI_API_KEY` (falls back to `OPENAI_API_KEY`), `FLIPSCAN_ROOT` (GUI projects folder), `FLIPSCAN_FFMPEG`/`FLIPSCAN_FFPROBE`, `FLIPSCAN_PROOF_CONCURRENCY` (chapters proofread in parallel, default 3), `FLIPSCAN_EXTERNAL_WORKER=1` (web only enqueues; a separate `flipscan worker` runs the jobs).

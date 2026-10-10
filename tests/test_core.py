@@ -258,6 +258,50 @@ def test_snap_bbox_empty_returns_input():
     assert snap_bbox(gray, 10, 10, 90, 90) == (10, 10, 90, 90)
 
 
+def _page_with_chart():
+    """Paper with text lines above and below a framed chart."""
+    import cv2
+    img = np.full((1000, 640, 3), (232, 228, 225), np.uint8)
+    for y in list(range(60, 460, 34)) + list(range(860, 980, 34)):
+        for x in range(60, 580, 22):
+            cv2.rectangle(img, (x, y), (x + 16, y + 18), (60, 60, 60), -1)
+    cv2.rectangle(img, (80, 500), (560, 820), (90, 90, 90), 2)       # frame
+    for y in range(540, 820, 40):
+        cv2.line(img, (80, y), (560, y), (170, 170, 170), 1)          # grid
+    for x in range(110, 540, 30):
+        cv2.rectangle(img, (x, 600 + x % 90), (x + 12, 700 + x % 60), (40, 40, 200), -1)
+    return img
+
+
+def test_figure_block_fixes_a_shifted_model_box():
+    from flipscan.imaging import figure_block_bbox
+    img = _page_with_chart()
+    # model box sits ~4 text lines too high and stops mid-chart
+    box = figure_block_bbox(img, [0.1, 0.35, 0.9, 0.7])
+    assert box is not None
+    x0, y0, x1, y1 = box
+    assert x0 <= 80 and x1 >= 560 and y0 <= 500 and y1 >= 820   # whole chart
+    assert y0 > 460 and y1 < 860                                  # no text lines
+
+
+def test_figure_block_none_on_plain_text():
+    from flipscan.imaging import figure_block_bbox
+    img = _page_with_chart()
+    img[490:830] = (232, 228, 225)                                # remove chart
+    assert figure_block_bbox(img, [0.1, 0.35, 0.9, 0.7]) is None
+
+
+def test_enhance_figure_whitens_paper_and_upscales():
+    from flipscan.stages.figures import enhance_figure
+    crop = _page_with_chart()[490:830, 70:570]
+    out = enhance_figure(crop, upscale=2.0)
+    assert out.shape[:2] == (crop.shape[0] * 2, crop.shape[1] * 2)
+    assert out[30:90, 30:70].mean() > 245                         # paper -> white
+    red = out[2 * (650 - 490), 2 * (115 - 70)]                    # a candle stays red
+    assert red[2] > 150 and red[0] < 100
+    big = enhance_figure(np.full((2000, 1500, 3), 200, np.uint8), upscale=2.0)
+    assert max(big.shape[:2]) <= 2400                             # long-edge cap
+
 # ---------------- dewarp
 
 def test_dewarp_straightens_bowed_lines():
@@ -562,3 +606,31 @@ def test_prompt_pins_the_printed_script():
     from flipscan.backends import PROMPT
     assert "never convert it to Simplified" in PROMPT
     assert "繁體中文" in PROMPT and "絕對不可以轉成簡體字" in PROMPT
+
+
+def test_enhance_figure_leaves_full_bleed_dark_photo_levels():
+    from flipscan.stages.figures import enhance_figure
+    dark = np.full((100, 120, 3), 50, np.uint8)
+    dark[40:60, 40:80] = 90
+    out = enhance_figure(dark, upscale=1.0)
+    assert abs(float(out.mean()) - float(dark.mean())) < 8      # not stretched to white
+
+
+def test_whole_page_figure_is_a_miss():
+    from flipscan.stages.figures import is_whole_page
+    assert is_whole_page((0, 0, 950, 980), 1000, 1000)
+    assert not is_whole_page((80, 500, 560, 820), 640, 1000)
+
+
+def test_write_figure_stays_under_size_budget(tmp_path):
+    from flipscan.stages.figures import write_figure
+    rng = np.random.default_rng(0)
+    noisy = np.full((900, 1200, 3), 230, np.uint8)
+    noisy[50:850, 50:1150] = rng.integers(0, 255, (800, 1100, 3), dtype=np.uint8)
+    out = tmp_path / "f.png"
+    write_figure(out, noisy, {"figures": {"upscale": 2.0, "max_kb": 1000}})
+    assert out.stat().st_size <= 1000 * 1024
+    small = _page_with_chart()[490:830, 70:570]
+    write_figure(out, small, {"figures": {"upscale": 2.0, "max_kb": 1000}})
+    import cv2
+    assert cv2.imread(str(out)).shape[:2] == (680, 1000)   # small chart keeps 2x

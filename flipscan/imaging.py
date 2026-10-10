@@ -449,6 +449,49 @@ def refine_figure_bbox(color: np.ndarray,
     return box
 
 
+def figure_block_bbox(color: np.ndarray, prior: list[float],
+                      grow_x: float = 0.08, grow_y: float = 0.15
+                      ) -> tuple[int, int, int, int] | None:
+    """Pixel box of the printed figure the model's approximate bbox points at.
+
+    The model's box is often shifted by several text lines — it swallows a
+    paragraph above a chart and cuts off its bottom. Snapping inside it can
+    only shrink, so instead: build a lighting-normalized ink mask, close small
+    gaps (a chart's frame and gridlines fuse into ONE component, text stays
+    line-sized pieces), and take every figure-sized component that lies mostly
+    inside a generously grown prior. None = no such component; the caller
+    falls back to the plain snap.
+    """
+    gray = cv2.cvtColor(color, cv2.COLOR_BGR2GRAY)
+    h, w = gray.shape
+    bg = cv2.medianBlur(cv2.dilate(gray, np.ones((7, 7), np.uint8)), 31)
+    ink = (cv2.subtract(bg, gray) > 22).astype(np.uint8)
+    ink = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    n, _labels, stats, _ = cv2.connectedComponentsWithStats(ink)
+    comps = [s for s in stats[1:] if s[4] >= 12]
+    if not comps:
+        return None
+    glyph_h = float(np.median([s[3] for s in comps]))
+    ex0, ey0 = (prior[0] - grow_x) * w, (prior[1] - grow_y) * h
+    ex1, ey1 = (prior[2] + grow_x) * w, (prior[3] + grow_y) * h
+    box = None
+    for x, y, bw, bh, _area in comps:
+        if bh < max(4 * glyph_h, 0.06 * h) or bw < 0.1 * w:
+            continue                      # text line, drop cap, speck
+        if bw * bh > 0.6 * w * h:
+            continue                      # page edge / shading, not a figure
+        ox = max(0.0, min(ex1, x + bw) - max(ex0, x))
+        oy = max(0.0, min(ey1, y + bh) - max(ey0, y))
+        if ox * oy < 0.3 * bw * bh:
+            continue                      # belongs to another figure
+        b = (int(x), int(y), int(x + bw), int(y + bh))
+        box = b if box is None else (min(box[0], b[0]), min(box[1], b[1]),
+                                     max(box[2], b[2]), max(box[3], b[3]))
+    if box is None or (box[2] - box[0]) * (box[3] - box[1]) > 0.6 * w * h:
+        return None
+    return box
+
+
 def mask_outside(bgr: np.ndarray, mask: np.ndarray,
                  fill: tuple[int, int, int] = (255, 255, 255)) -> np.ndarray:
     """Paint everything outside the mask a flat color (hide desk clutter)."""
